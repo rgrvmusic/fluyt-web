@@ -118,7 +118,11 @@ constructs its `AudioContext` at 48000 to match. At the 44.1 kHz most hardware d
 engine would play 8.8% flat and slow: audible as an engine that is out of tune with itself, and
 wrong in exactly the way that would make a preview useless.
 
-Where a browser cannot give 48000, the page says so in its footer rather than pretending.
+The unit itself refuses to be built for anything else: `unit_init` rejects a descriptor whose
+samplerate is not 48000, which is the same condition the drumlogue units carry. The descriptor is
+this side's to fill, so it always says 48000 and the check never fires - the module is a 48 kHz
+engine whatever rate a caller asks for, which is why `regroove_synth_create`'s rate argument is
+ignored. Where a browser cannot give 48000, the page says so in its footer rather than pretending.
 
 
 #### Levels
@@ -167,6 +171,32 @@ So these modules can be dropped into `rfx/web/rfxsynths/` unchanged. Nothing her
 nothing here changes it.
 
 
+#### The same entry points the drumlogue calls
+
+Under those names, the module does not call the bridge directly - it calls the device's own entry
+points: `unit_init`, `unit_render`, `unit_note_on`, `unit_set_param_value` and the rest, compiled
+from `shim/fluyt_unit.c` in the submodule exactly as
+[`fluyt-logue`](https://github.com/rgrvmusic/fluyt-logue) builds them for a drumlogue.
+`wasm/wasm_bindings.c` fills in the `unit_runtime_desc_t` a drumlogue would fill in (drumlogue synth,
+API 2.0.0, 48000, stereo, no sample banks) and hands it over; everything after that is the unit's.
+
+That is the point of doing it this way: the path a browser takes is the path the hardware takes, so
+this page says something about the units themselves rather than being a second implementation that
+happens to agree with them. What is left on the bridge is what the unit API has no word for - how
+many rows an engine has, how wide a row is, how many presets there are, and the engine's own name -
+because a device reads those out of a unit header compiled into it, and a page has no header to
+read.
+
+`unit_init` refuses a descriptor that is not a drumlogue, not that API version, not stereo or not
+48000 - see the sample rate below, which is now a condition the unit enforces rather than a
+convention this page keeps.
+
+The logue SDK's four drumlogue headers are vendored in `vendor/logue-sdk/` so that the unit's own
+entry points compile here (BSD 3-Clause, KORG INC.; `vendor/logue-sdk/README.md` has the commit).
+A full SDK checkout can be used instead: `make web LOGUE_SDK=/path/to/logue-sdk`. Nothing else of
+the SDK is needed - no engine, no LUT, no runtime, no `_unit_base.c`.
+
+
 #### Publishing
 
 `.github/workflows/pages.yml` builds and deploys `dist/` to GitHub Pages on every push to `main`,
@@ -178,7 +208,8 @@ itch.io iframe at the Pages URL; `index.html` is the page for it.
 
 The page, the worklet, the JavaScript, `wasm/wasm_bindings.c` and the build scripts are **MIT**.
 The compiled modules in `dist/wasm/` are **GPL-3.0-only**, because each one contains Felucca's
-GPL-3.0 source - and, for FM6, msfa's Apache-2.0. [LICENSING.md](LICENSING.md) has the split and the
-source offer; the page footer carries it too, since a page that serves GPL binaries is where a
-visitor would look for it.
+GPL-3.0 source - and, for FM6, msfa's Apache-2.0. The logue SDK's four drumlogue headers are
+**BSD 3-Clause** (KORG INC.), vendored unmodified and compiled into those modules.
+[LICENSING.md](LICENSING.md) has the split and the source offer; the page footer carries it too,
+since a page that serves GPL binaries is where a visitor would look for it.
 

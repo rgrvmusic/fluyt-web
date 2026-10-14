@@ -5,6 +5,7 @@ Copyright (C) 2026 Gerard Braad - **Regroove | RGRV**.
 This repository is two things under two licences, and which one applies to a file depends on
 whether that file reaches the browser as source or as a compiled engine.
 
+
 ## The web code - MIT
 
 The page and everything it is made of is **MIT**, copyright (C) 2026 Gerard Braad
@@ -17,13 +18,15 @@ The page and everything it is made of is **MIT**, copyright (C) 2026 Gerard Braa
 | `plugins/`, `build-wasm.sh`, `Makefile` | the build |
 | `tools/` | the checks |
 
+
 ## The compiled modules - GPL-3.0-only
 
 `dist/wasm/` - the nine `.js`/`.wasm` pairs the build produces - is **GPL-3.0-only**, and so is
-each one of them on its own. They are not merely built from GPL code, they *contain* it: each
-module is one translation unit with Felucca's engine, Felucca's support code and the Fluyt bridge
+each one of them on its own. They are not merely built from GPL code, they *contain* it: a module
+has Felucca's engine, Felucca's support code, the Fluyt bridge and the unit's own entry points
 compiled into it, which is the point of the `#include "fluyt_engine.c"` at the top of
-`wasm/wasm_bindings.c`. A module is a derivative work of everything in it.
+`wasm/wasm_bindings.c` and of `shim/fluyt_unit.c` beside it. A module is a derivative work of
+everything in it.
 
 So `wasm_bindings.c` being MIT does not make a module MIT. It is the same exception
 [`fluyt-logue`](https://github.com/rgrvmusic/fluyt-logue) draws for its own build scripts: the code
@@ -35,6 +38,7 @@ plus the `vendor/fluyt-logue` submodule at its pinned commit - every module is b
 [`fluyt-logue`](https://github.com/rgrvmusic/fluyt-logue) itself: the Fluyt bridge, the
 nine units' configuration, and Felucca nested inside it. So the source offer is that repository and
 this one, and the page footer links to it.
+
 
 ## Felucca
 
@@ -54,6 +58,7 @@ exceptions that are part of Felucca upstream and are recorded in full in Felucca
 | `firmware/src/fm6_core.c` - a port of **msfa** by Google Inc. and Pascal Gauthier, from Dexed (<https://github.com/asb2m10/dexed>), to integer C | Apache-2.0 | pulled in by `eng_fm6.c`, so it is in **FLUYT FM6** |
 | `firmware/src/eng_phase.c` - the PHASE waveforms, a C port of the oscillator of CrispyZebra (<https://github.com/hugelton/CrispyZebra>) | GPL-3.0 | **FLUYT PHASE** |
 
+
 ## The generated tables
 
 `build/gen/` holds `felucca_tables.h` and `felucca_fm6.h`, produced at build time by **Felucca's own
@@ -70,12 +75,27 @@ generated at 48 kHz and the page constructs its `AudioContext` at 48000 to match
 44.1 kHz of most hardware, every engine would play 8.8% flat and slow. It is not a detail: it is
 the difference between the preview and the unit.
 
-## The logue SDK
 
-None of it is here. The logue units that [`fluyt-logue`](https://github.com/rgrvmusic/logue-felucca-engines)
-builds need the logue SDK's headers, but the shim's engine translation unit has no SDK dependency -
-it is why these modules are cheap to build - so the SDK, which is **BSD 3-Clause**, Copyright (c)
-2018 KORG INC., is not read, linked or copied by anything in this repository.
+## The logue SDK - four headers, BSD 3-Clause
+
+Four of the logue SDK's drumlogue headers are vendored in `vendor/logue-sdk/`: `unit.h`,
+`runtime.h`, `attributes.h` and `sample_wrapper.h` - 364 lines, copied verbatim and unmodified,
+with the SDK's own `LICENSE` beside them. They are what the device's entry points are declared in
+(`shim/fluyt_unit.c`, in the submodule), and those are what `wasm/wasm_bindings.c` calls, so a
+module reaches its engine through the same functions the hardware calls and needs the declarations
+to compile. `vendor/logue-sdk/README.md` records where they came from and the commit they were
+taken at.
+
+The SDK is **BSD 3-Clause**, Copyright (c) 2018 KORG INC. - compatible with this repository's MIT
+and with the GPL-3.0-only modules, and the four headers stay BSD-3 in the modules they are compiled
+into.
+
+Nothing else of the SDK is here. No engine, no LUT, no runtime and no `_unit_base.c`: the shim's
+engine translation unit has no SDK dependency at all - which is why these modules are cheap to
+build - and a unit that defines every entry point it is called through needs none of the weak
+fallbacks that file provides. For the same reason a full checkout is not required, though one can
+be used where it is wanted: `make web LOGUE_SDK=/path/to/logue-sdk` builds against it.
+
 
 ## Regroove | RGRV
 
@@ -83,8 +103,10 @@ Fluyt web is by **Gerard Braad (Regroove | RGRV)**. It is the preview for
 [Fluyt](https://github.com/rgrvmusic/fluyt-logue), the drumlogue and microKORG2 units that carry the
 developer id `0x72677276` - "rgrv" - with unit ids `0x464C5901`..`0x464C5909`.
 
+
 ## Trademarks
 
 "drumlogue" and "microKORG2" are trademarks of KORG Inc. "Felucca" and "Hügelton Instruments" are
 names of Hügelton Instruments. Fluyt is independent work: it is not affiliated with, endorsed by or
 supported by KORG or by the owners of the FM-1.
+

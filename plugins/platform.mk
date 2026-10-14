@@ -49,6 +49,14 @@ FELUCCA    := $(VENDOR)/felucca
 GEN_DIR    := $(FLUYT_ROOT)/build/gen
 UNIT_DIR   := $(VENDOR)/$(UNIT)
 
+# The logue SDK's drumlogue headers, which the unit's own shim/fluyt_unit.c includes: unit.h and the
+# three it pulls in. Four files, 364 lines, BSD-3 (KORG INC.) - see vendor/logue-sdk/README.md for
+# where they came from and why they are here rather than checked out. A full checkout of the SDK
+# works just as well and is what a build held to one would use:
+#
+#   make web LOGUE_SDK=/path/to/logue-sdk
+LOGUE_SDK ?= $(FLUYT_ROOT)/vendor/logue-sdk
+
 # Where the built pair lands. dist/wasm/ is this repository's own page; point WEB_DIR at
 # rfx/web/rfxsynths/ to drop the pair straight into that environment instead.
 WEB_DIR ?= $(FLUYT_ROOT)/dist/wasm
@@ -149,10 +157,18 @@ WASM_EXPORTS = \
 # GEN_DIR comes first: that is what stands in for the shim/gen a logue build would have found
 # inside the submodule. -I$(UNIT_DIR) is for the unit's rows.def; wasm_bindings.c includes the
 # bridge the way tools/hostsim.c does.
+#
+# The drumlogue/common include is what lets shim/fluyt_unit.c - the device's own entry points - be
+# compiled in beside the binding, so that this module reaches the engine the way the hardware does.
 WASM_INCLUDES = -I$(GEN_DIR) -I$(FLUYT_ROOT) -I$(UNIT_DIR) \
+                -I$(LOGUE_SDK)/platform/drumlogue/common \
                 -I$(VENDOR)/shim -I$(FELUCCA)/firmware/src
 
-WASM_SOURCES = $(FLUYT_ROOT)/wasm/wasm_bindings.c
+# Both halves of a logue unit: the binding, and the unit_* entry points it calls. They are two
+# translation units rather than one because that is how the device compiles them - the unit wrapper
+# is written against shim/fluyt_engine.h, which declares the bridge as externs, and not against the
+# bridge's internals.
+WASM_SOURCES = $(FLUYT_ROOT)/wasm/wasm_bindings.c $(VENDOR)/shim/fluyt_unit.c
 
 # ---------------------------------------------------------------------------------------------
 # Targets
