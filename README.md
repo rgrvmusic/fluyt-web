@@ -19,6 +19,8 @@ instead of a drumlogue.
   press it as often as you like, and a few presses have been over most of the nine.
 - A second page adds a keyboard and a MIDI input, for playing an engine rather than hearing the
   tune.
+- The tune is a **Standard MIDI File**, bundled and parsed in the page, so a file written here or
+  in a DAW reaches the engines the same way.
 
 
 #### The two pages
@@ -53,11 +55,15 @@ whatever is right with the build.
 | --- | --- |
 | `make` | `dist/` - the nine modules, then the page over them. This is what gets deployed. |
 | `make wasm` | just `dist/wasm/`, for iterating on the C |
-| `make check` | `smoke` + `pagecheck` + `tunecheck` + `workletcheck`, below |
+| `make midi` | write the notation in `src/js/tune.js` out to `src/tune/fluyt-tune.mid`, after editing it |
+| `make check` | `smoke` + `pagecheck` + `midicheck` + `tunecheck` + `workletcheck`, below |
 | `make serve` | `dist/` on `:8000` |
 | `make clean` | remove `dist/` and `build/` |
 
-Nothing built is committed: `dist/` and `build/` are gitignored, and the repository is source-only.
+Nothing built is committed: `dist/` and `build/` are gitignored, and the repository is source-only -
+with one deliberate exception. `src/tune/fluyt-tune.mid` is committed, because it is not a build
+product of the page: it is the file the page plays, the way a `.c` file is what a compiler reads. It
+is written from the notation by `make midi`, and `midicheck` fails if the two have drifted apart.
 
 
 #### The checks
@@ -65,26 +71,41 @@ Nothing built is committed: `dist/` and `build/` are gitignored, and the reposit
 | | |
 | --- | --- |
 | `tools/smoke.mjs` | each of the nine modules loads through the worklet's own loader, names itself, and renders every preset it claims - so a module that loads and stays silent fails here |
-| `tools/pagecheck.mjs` | every module parses and its imports resolve, every file a page asks for is there, and every id a script looks up is in the markup - the three ways the page's own layer breaks without any engine being at fault |
-| `tools/tunecheck.mjs` | the whole tune, on every engine, on every part, offline: step counts, non-finite samples, silence, and the mix against full scale |
-| `tools/workletcheck.mjs` | the worklet itself, run outside a browser: where every note lands, whether the frame count is right, mid-tune joins, and stop |
+| `tools/pagecheck.mjs` | every module parses and its imports resolve, every file a page asks for is there - in the markup or built at runtime - and every id a script looks up is in the markup |
+| `tools/midicheck.mjs` | the tune: that `src/tune/fluyt-tune.mid` is still what the notation says, that it reads back through `src/js/smf.js` as those notes on those steps, and that the grid, the length and the awkward files are handled the way the comments claim |
+| `tools/tunecheck.mjs` | the whole tune, on every engine, on every part, offline: non-finite samples, silence, and the mix against full scale |
+| `tools/workletcheck.mjs` | the worklet itself, run outside a browser: where every note lands, whether the frame count is right, the loop point, mid-tune joins, and stop |
 
-`tunecheck` is what catches a mistake in the notation or a preset that is not there without needing
-a browser, and it writes `build/tunecheck/fluyt-tune.wav` - the tune as the page opens, trimmed as
-the page trims it - so it can be listened to.
+`midicheck` is what stands between the two halves of the tune. It builds the file from the notation
+and compares the bytes, then reads the committed file back with the parser the page loads and
+compares every `on`/`off` entry against the notation - so a reader that loses a note, or moves one by
+a step, fails here rather than in a browser. The rest of it is the reader's own decisions: one
+fixture per grid on the ladder, a file that is on none of them, a format 0 file (everything on one
+track, told apart by channel), a note held past the end of the file, a note of no length, an off with
+no on, a file with no tempo, a file that changes tempo, and a file with more parts than the page has.
+
+`tunecheck` is what catches a preset that is not there without needing a browser, and it writes
+`build/tunecheck/fluyt-tune.wav` - the tune as the page opens, trimmed as the page trims it - so it
+can be listened to.
 
 `workletcheck` stands in for an `AudioWorkletGlobalScope` and drives the real processor, which is
 the only way the sample-accurate scheduling gets checked by anything but an ear. It measures the
 frame each note starts on and asserts each one is at or after its step and less than a frame past
 it, that every quantum renders exactly 128 frames across however many blocks a step split it into,
-and that a node joining a tune already playing lands on the tune's own step rather than starting
-its own bar one. The step length is 6428.571... frames, so this is where rounding it would fail.
+that the second pass begins exactly one period after the first - which is where a pattern indexed
+one step too long shows up as a skipped beat - and that a node joining a tune already playing lands
+on the tune's own step rather than starting its own bar one. The step length is 6428.568 frames, so
+this is where rounding it would fail.
 
 
 #### The tune
 
-Eight bars in A minor at 112 BPM, four parts, written by hand in a step notation
-(`src/js/pattern.js`) that reads a bar at a time:
+Eight bars in A minor at 112 BPM, four parts. **The page plays `src/tune/fluyt-tune.mid`**, a
+four-track Standard MIDI File, read when the page opens by `src/js/smf.js`; the notation in
+`src/js/tune.js` is where that file is written from, by `make midi`.
+
+Both are kept because each is good at something the other is not. The notation is a bar a line and
+can be read, edited and reviewed by hand:
 
 ```
 bass:   "A1 . A1 . A1 . A1 . A1 . A1 . A1 . A1 ."
@@ -96,9 +117,32 @@ A token is a note (`A1`, or a MIDI number like `36` for the drum part), several 
 `.` for a rest, or `-` to hold. It is an original tune: the shape is a sea shanty's, because the
 page it plays on is a Fluyt page and a Fluyt is a ship, but it is not a quotation of any shanty.
 
-`compileTune()` refuses to build if a part is not exactly eight bars of sixteen, which is the
+The file is what a DAW opens, what a visitor can replace, and what the page actually parses - so the
+path from music to engine is a real one, and not a private notation only this page understands.
+`compileTune()` still refuses to build if a part is not exactly eight bars of sixteen, which is the
 mistake the notation makes easiest - and the one that would otherwise arrive as a part that is
 quietly a step out of phase for the whole loop.
+
+**The grid is the file's, not the page's.** A step is a fixed number of frames, so a file's ticks
+have to land on steps - and a triplet figure snapped into straight sixteenths is a different rhythm,
+not a rounding error. So the reader picks the step from the file: the coarsest of 12, 16, 24, 32, 48
+or 96 steps to the bar that divides every onset and every release in it. Straight sixteenths come
+back as sixteenths, 16th-note triplets as 24 to the bar, a file with both as 48 - and the page says
+which one it chose, next to the step count and the tempo, on the line under the transport. A file
+that is on none of the six is played on sixteenths anyway, with the number of notes moved and the
+furthest one moved reported rather than hidden (`snapped` and `worst` in the parsed song).
+
+A tempo is read the same way, from the file's own set-tempo event, and the transport's step length
+follows from it - the notation's `BPM` is only what `make midi` writes. A file that changes tempo
+part-way is played at its first tempo throughout, which is what one clock and a looping transport can
+honestly do; the change is counted in `tempoChanges` rather than ignored.
+
+**A tune authored in a DAW instead** is a supported thing to do: put the file at
+`src/tune/fluyt-tune.mid`, delete the notation and `tools/tune-to-mid.mjs`, and the page plays it.
+Four tracks, matched to the four parts by track name (`Bass`, `Lead`, `Pad`, `Drums`, or a word like
+"strings" or "kit"), then by channel 10 for the drums, then in order; format 1 or format 0, one track
+per part or one track told apart by channel. What is not supported is a file here and a notation
+there, each claiming to be the tune - which is why `midicheck` compares them.
 
 
 #### Presets, by name

@@ -80,13 +80,18 @@ function importsOf(code) {
 }
 
 /**
- * The code with every comment and string body blanked out, in place, so offsets are preserved.
+ * The code with every comment blanked out, in place, so offsets are preserved - and, unless
+ * `strings` is 'keep', every string body with them.
  *
  * A name that appears only in a comment or a log message is not a use of it, and without this the
  * check below would be reading prose. Quotation marks are kept so that an import specifier is still
  * a string; what is between them is spaces.
+ *
+ * The runtime urls are the other way round: what they are looking for *is* a string, so they keep
+ * them and ask only that the comments go - a url written about in a comment is not a url the page
+ * asks for.
  */
-function stripLiterals(code) {
+function stripLiterals(code, { strings = 'blank' } = {}) {
     const blank = (s) => s.replace(/[^\n]/g, ' ');
     let out = '';
     let i = 0;
@@ -109,7 +114,8 @@ function stripLiterals(code) {
                 if (code[j] === '\\') j++;
                 j++;
             }
-            out += c + blank(code.slice(i + 1, Math.min(j, code.length))) + (j < code.length ? c : '');
+            const body = code.slice(i + 1, Math.min(j, code.length));
+            out += c + (strings === 'keep' ? body : blank(body)) + (j < code.length ? c : '');
             i = Math.min(j + 1, code.length);
         } else {
             out += c;
@@ -205,6 +211,31 @@ const exists = async (p) => {
 };
 
 /**
+ * The urls a module builds for itself at runtime, as paths relative to that module.
+ *
+ * `new URL('../worklet/fluyt-worklet.js', import.meta.url)` is the form; the other is a url
+ * assembled out of the module's own constants - `new URL(`../${TUNE_FILE}`, import.meta.url)` -
+ * which is how a module asks for a file whose name it also publishes. Those constants are
+ * substituted here, so what is checked is the file that is named rather than the shape of the
+ * expression that names it. A name that is not one of the module's own string constants is left as
+ * it was, and will simply not resolve.
+ */
+function runtimeUrls(text) {
+    const values = new Map();
+    for (const m of text.matchAll(/\bconst\s+([A-Za-z_$][\w$]*)\s*=\s*'([^']*)'/g)) {
+        values.set(m[1], m[2]);
+    }
+
+    const urls = [];
+    for (const m of stripLiterals(text, { strings: 'keep' })
+        .matchAll(/new URL\(\s*['"`]([^'"`]+)['"`]\s*,\s*import\.meta\.url\s*\)/g)) {
+        urls.push(m[1].replace(/\$\{([A-Za-z_$][\w$]*)\}/g,
+            (whole, name) => (values.has(name) ? values.get(name) : whole)));
+    }
+    return urls;
+}
+
+/**
  * Whether a url, relative to a module or page at `from` under src/, resolves in either tree.
  *
  * A url ending in `/` is a directory the build produces rather than one that is in the source -
@@ -292,14 +323,35 @@ async function main() {
         console.log(`  ${GREEN}✓${NC} ${page.html}: ${wanted.length} urls, all present`);
     }
 
-    // The worklet is the one file nothing above names, because fluyt.js builds its url at runtime
-    // out of import.meta.url rather than writing it in the markup.
-    const fluytSrc = code.get('js/fluyt.js') || '';
-    for (const m of fluytSrc.matchAll(/new URL\(\s*'([^']+)'\s*,\s*import\.meta\.url\s*\)/g)) {
-        const found = await resolves('js', m[1]);
-        if (found === false) fail(`js/fluyt.js: loads ${m[1]} at runtime, which is not there`);
-        else if (found === null) console.log(`  ${GREEN}✓${NC} js/fluyt.js: loads ${m[1]} at runtime (dist/ is not built yet, so it is unchecked)`);
-        else console.log(`  ${GREEN}✓${NC} js/fluyt.js: loads ${m[1]} at runtime, and it is there`);
+    // The files a module builds its own url for at runtime, out of import.meta.url: the worklet, and
+    // the tune's MIDI file. Nothing in the markup names either of them, so they are looked for here.
+    // A url is relative to the module that asks for it, and resolves under src/ (the .mid, which is
+    // committed) or under dist/ (the worklet, which the build copies there) - `resolves` answers for
+    // both, and for a tree that has not been built.
+    console.log('');
+    console.log('Files the modules ask for at runtime:');
+
+    let runtime = 0;
+    for (const [rel, text] of code) {
+        const urls = runtimeUrls(text);
+        if (!urls.length) continue;
+
+        const missing = [];
+        let unbuilt = false;
+        for (const url of urls) {
+            const found = await resolves(path.dirname(rel), url);
+            if (found === false) missing.push(url);
+            else if (found === null) unbuilt = true;
+        }
+
+        for (const url of missing) fail(`${rel}: loads ${url} at runtime, which is not there`);
+        runtime += urls.length;
+
+        if (!missing.length) {
+            const note = unbuilt ? ' (dist/ is not built yet, so one of them is unchecked)' : '';
+            console.log(`  ${GREEN}✓${NC} ${rel}: ${urls.length} url` +
+                        `${urls.length === 1 ? '' : 's'} built at runtime, all there${note}`);
+        }
     }
 
     // every id a script looks up is in the markup of the page that runs it

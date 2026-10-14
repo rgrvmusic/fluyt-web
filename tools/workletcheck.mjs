@@ -41,7 +41,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 
-import { BPM, STEPS_PER_BAR, compileTune, presetForRole } from '../src/js/tune.js';
+import { TUNE_FILE, compileMidi, presetForRole } from '../src/js/tune.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const WASM_DIR = path.join(ROOT, 'dist', 'wasm');
@@ -209,11 +209,14 @@ async function main() {
 
     const engines = JSON.parse(await readFile(path.join(WASM_DIR, 'engines.json'), 'utf8'));
     const engine = engines.find((e) => e.slug === 'analog') || engines[0];
-    const tune = compileTune();
+    // the file the page plays, read by the page's own reader: the pattern, the tempo and the grid
+    // measured here are the ones that go to the worklet, not a second copy of them
+    const song = compileMidi(new Uint8Array(await readFile(path.join(ROOT, 'src', TUNE_FILE))));
+    const tune = song.parts;
     const bass = tune.find((p) => p.id === 'bass');
 
     // the tune's own step length: fractional, and the whole point of the exercise
-    const stepFrames = (SAMPLE_RATE * 60) / (BPM * (STEPS_PER_BAR / 4));
+    const stepFrames = (SAMPLE_RATE * 60) / (song.bpm * (song.stepsPerBar / 4));
     const totalSteps = bass.steps;
     const step = { on: bass.on, off: bass.off, stepFrames, epochFrame: 0 };
 

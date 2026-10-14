@@ -12,8 +12,10 @@
 // engine in the position each part actually takes - the bass line on the bass part, the drum kit on
 // the drum part - so what it measures is the tune and not a synthetic note.
 //
-// It imports src/js/pattern.js and src/js/tune.js, which are the files the page itself loads, so a
-// mistake in the notation fails here rather than in a browser.
+// It imports src/js/pattern.js, src/js/smf.js and src/js/tune.js, which are the files the page itself
+// loads, and it renders the MIDI file the page plays rather than the notation - so what is rendered is
+// the tune as the page has it, tempo and grid included, and a mistake in the file fails here rather
+// than in a browser.
 
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -21,7 +23,9 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 
 import { parsePart, stepCount, noteToMidi, midiToNote } from '../src/js/pattern.js';
-import { BPM, STEPS_PER_BAR, BARS, PARTS, DEFAULT_ENGINES, compileTune, presetForRole } from '../src/js/tune.js';
+import {
+    BPM, STEPS_PER_BAR, BARS, PARTS, TUNE_FILE, DEFAULT_ENGINES, compileMidi, presetForRole,
+} from '../src/js/tune.js';
 import { MASTER_GAIN } from '../src/js/mix.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -199,23 +203,27 @@ async function main() {
         fail(`note names: ${err.message}`);
     }
 
-    // ---- the tune, as the page compiles it
-    let compiled;
+    // ---- the tune, as the page has it: src/tune/fluyt-tune.mid, read by src/js/smf.js - the same
+    // file and the same reader the browser uses, so the tempo and the grid rendered here are the
+    // ones the page plays at rather than the notation's claim about them
+    let song;
     try {
-        compiled = compileTune();
+        song = compileMidi(new Uint8Array(await readFile(path.join(ROOT, 'src', TUNE_FILE))));
     } catch (err) {
-        fail(`compileTune: ${err.message}`);
+        fail(`src/${TUNE_FILE}: ${err.message}`);
         return report();
     }
+    const compiled = song.parts;
 
     // ---- every engine, on every part it could be put on. The page lets a visitor do exactly this,
     // so the check is every combination and not only the default four.
     const engines = JSON.parse(await readFile(path.join(WASM_DIR, 'engines.json'), 'utf8'));
-    const stepFrames = (SAMPLE_RATE * 60) / (BPM * (STEPS_PER_BAR / 4));
+    const stepFrames = (SAMPLE_RATE * 60) / (song.bpm * (song.stepsPerBar / 4));
     const loopFrames = Math.round(compiled[0].steps * stepFrames);
 
     console.log('');
-    console.log(`The tune: ${BARS} bars, ${BPM} BPM, ${(loopFrames / SAMPLE_RATE).toFixed(1)} s, ` +
+    console.log(`The tune: ${song.bars} bars of ${song.grid} at ${song.bpm.toFixed(2)} BPM, ` +
+                `${(loopFrames / SAMPLE_RATE).toFixed(1)} s, ` +
                 `${compiled[0].steps} steps of ${stepFrames.toFixed(1)} frames`);
     console.log('');
 

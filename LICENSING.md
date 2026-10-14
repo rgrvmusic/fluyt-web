@@ -14,9 +14,14 @@ The page and everything it is made of is **MIT**, copyright (C) 2026 Gerard Braa
 | | |
 | --- | --- |
 | `src/` | the two pages, the stylesheet, the JavaScript, the AudioWorklet |
+| `src/tune/fluyt-tune.mid` | the tune itself - an original work, written for this page, MIT like the rest of `src/`. It is the only file here that is not source: it is the MIDI file the page plays, generated from the notation in `src/js/tune.js` by `make midi` |
 | `wasm/wasm_bindings.c` | the browser ABI - the only C here that is MIT |
 | `plugins/`, `build-wasm.sh`, `Makefile` | the build |
 | `tools/` | the checks |
+
+Nothing here is anyone else's music. The tune is original and the file is generated from this
+repository's own notation, so there is no sample, no transcription and no quotation to clear - and
+none to attribute.
 
 
 ## The compiled modules - GPL-3.0-only

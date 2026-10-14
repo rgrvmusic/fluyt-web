@@ -79,7 +79,15 @@ export function createUI(player) {
     // ---- render
     function render(p) {
         els.play.textContent = p.playing ? 'Stop' : 'Play';
-        els.status.textContent = p.playing ? `${p.secondsPerLoop.toFixed(0)} s loop` : '';
+
+        // The tune's own facts, not the page's: the tempo and the grid come out of the MIDI file, so
+        // saying them is how a visitor - and whoever put the file there - can see what is playing.
+        // 128 steps of sixteenths at 112 BPM is a 17 s loop; the same tune on a triplet grid would
+        // say so here instead.
+        const loop = p.playing ? ` · ${p.secondsPerLoop.toFixed(0)} s loop` : '';
+        els.status.textContent = p.grid
+            ? `${p.totalSteps} steps · ${p.grid} · ${p.bpm.toFixed(2)} BPM${loop}`
+            : '';
 
         const engineItems = p.engines.map((e) => ({ value: e.slug, label: e.name }));
 

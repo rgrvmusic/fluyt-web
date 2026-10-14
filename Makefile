@@ -4,12 +4,15 @@
 #
 #   make          build dist/ - the wasm modules, then the page over them
 #   make wasm     just the modules (dist/wasm/), for iterating on the C
-#   make check    load every module and render the whole tune, in node
+#   make midi     write the tune out to src/tune/fluyt-tune.mid, after editing the notation
+#   make check    load every module, read the tune back, and render it, in node
 #   make serve    serve dist/ on :8000 - a browser will not run this from file://
 #   make clean    remove dist/ and build/
 #
 # The result of `make` is dist/ and nothing else: it is what gets deployed, it is what `make serve`
-# serves, and it is gitignored. Nothing built is ever committed.
+# serves, and it is gitignored. The one built thing that *is* committed is the tune - it is the file
+# the page plays, so it is a source file, written by `make midi` from the notation in src/js/tune.js
+# and checked by `make midicheck` to still be what that notation says.
 
 EMCC ?= emcc
 PORT ?= 8000
@@ -23,7 +26,7 @@ WASM_DIR := $(DIST)/wasm
 # need compiling belongs in plugins/ with the rest of the C.
 PAGE_SRC := src
 
-.PHONY: all wasm page check smoke pagecheck tunecheck workletcheck serve clean
+.PHONY: all wasm page midi check smoke pagecheck midicheck tunecheck workletcheck serve clean
 
 all: page
 
@@ -50,15 +53,27 @@ page: wasm
 	@echo "dist/ is ready - run 'make serve' and open http://localhost:$(PORT)/"
 
 # --------------------------------------------------------------------------------------------
+# the tune
+
+# The page plays src/tune/fluyt-tune.mid, and the notation in src/js/tune.js is where it is written:
+# this turns one into the other. Nothing depends on it - the file is committed - so it is a rule to
+# run after editing the notation, not a step of the build.
+midi:
+	@node tools/tune-to-mid.mjs
+
+# --------------------------------------------------------------------------------------------
 # check
 
-check: smoke pagecheck tunecheck workletcheck
+check: smoke pagecheck midicheck tunecheck workletcheck
 
 smoke: wasm
 	@node tools/smoke.mjs
 
 pagecheck:
 	@node tools/pagecheck.mjs
+
+midicheck:
+	@node tools/midicheck.mjs
 
 tunecheck: wasm
 	@node tools/tunecheck.mjs

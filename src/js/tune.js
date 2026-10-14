@@ -21,12 +21,31 @@
 // it a bar at a time is the point. The mechanical parts are built from two one-line helpers; a
 // helper is still a string of tokens, so replacing one with a literal changes nothing but the
 // reading, and the notation is the same in both.
+//
+// ---------------------------------------------------------------------------------------------
+// This file is the tune's source. The page reads a MIDI file.
+//
+// What plays is src/tune/fluyt-tune.mid: four tracks of Standard MIDI File, read by src/js/smf.js
+// when the page opens, so that a tune reaches the engines by the same path any other MIDI file
+// would. The notation above is where that file is written from, by tools/tune-to-mid.mjs, and
+// `make check` fails if the two are not the same tune - so a note added here and not written out is
+// a build failure rather than a page quietly playing last week's tune.
+//
+// Keeping both is a deliberate cost, paid for what each is good at: the notation is a bar a line and
+// can be read, edited and reviewed here, and the file is what a DAW opens and what the page actually
+// parses. Neither is a second implementation of the tune - the file is generated from this and
+// checked against it - which is the only way two representations of one thing are worth having.
 
 import { parsePart, stepCount } from './pattern.js';
+import { parseMidi, partsFromMidi } from './smf.js';
 
 export const BPM = 112;
 export const STEPS_PER_BAR = 16;          // sixteenth notes in 4/4, so one step is a sixteenth
 export const BARS = 8;
+
+// The tune the page plays, relative to src/ - so both sides of the tree can find it: the page asks
+// the browser for it, and the Node tools read the same path. One fact, two readers.
+export const TUNE_FILE = 'tune/fluyt-tune.mid';
 
 // one bar of an eighth-note pulse on one note: eight notes, each a sixteenth of sound and a
 // sixteenth of rest. This is what a shanty bass does - it pushes, it does not sustain.
@@ -146,6 +165,29 @@ export function compileTune(parts = PARTS) {
         const parsed = parsePart(part.text, part.id);
         return { ...part, ...parsed };
     });
+}
+
+/**
+ * The tune as the page plays it: the MIDI file, read into the four parts.
+ *
+ * What comes back is not the notation's shape. It is the file's own facts - its tempo, which of the
+ * six grids it landed on, how many bars it is - with the parts under `parts`, so the page takes its
+ * step length from the music rather than from a constant that agrees with it today. `BPM` and
+ * `STEPS_PER_BAR` above are the notation's, and belong to tools/tune-to-mid.mjs; a page that used
+ * them would be playing the file at a tempo the file does not have.
+ *
+ * The parts' ids, labels and roles are still this file's (see PARTS): which four parts a tune has is
+ * the page's business, and a track in the file is matched to one of them by name.
+ */
+export function compileMidi(bytes) {
+    return partsFromMidi(parseMidi(bytes), PARTS);
+}
+
+/** The same, from the file - the page's one fetch before anything can play. */
+export async function loadTune() {
+    const res = await fetch(new URL(`../${TUNE_FILE}`, import.meta.url));
+    if (!res.ok) throw new Error(`${TUNE_FILE}: the browser answered ${res.status}`);
+    return compileMidi(new Uint8Array(await res.arrayBuffer()));
 }
 
 /**

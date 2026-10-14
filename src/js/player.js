@@ -11,7 +11,7 @@
 // the bar already is. A setTimeout here would drift against the audio clock, and it would drift
 // differently on each of the four parts.
 
-import { BPM, STEPS_PER_BAR, compileTune, presetForRole, DEFAULT_ENGINES } from './tune.js';
+import { loadTune, presetForRole, DEFAULT_ENGINES } from './tune.js';
 import { Part, ModuleCache, loadEngines } from './fluyt.js';
 import { MASTER_GAIN } from './mix.js';
 
@@ -31,8 +31,8 @@ const AUDITION_PART = 'lead';
  * `auditionOnly` builds just the part a visitor plays by hand - the keyboard page.
  *
  * That page has no transport and never runs the tune, so the other three parts would be three
- * engines loaded, instanced and never heard. The tune is still compiled whole, so the notation is
- * checked either way; it is the parts that are not built.
+ * engines loaded, instanced and never heard. The file is still read whole, so what the tune is is
+ * the same on both pages; it is the parts that are not built.
  */
 export class Player {
     constructor({ onChange = () => {}, auditionOnly = false } = {}) {
@@ -44,6 +44,7 @@ export class Player {
         this.engines = [];
         this.parts = new Map();
         this.tune = [];
+        this.song = null;
 
         this.playing = false;
 
@@ -61,6 +62,23 @@ export class Player {
 
     get secondsPerLoop() {
         return (this.totalSteps * this.stepFrames) / this.sampleRate;
+    }
+
+    /** The tempo the tune's file carries, which is what the transport is running at. */
+    get bpm() {
+        return this.song ? this.song.bpm : 0;
+    }
+
+    /**
+     * The grid the file landed on - "sixteenths", or one of the five others in src/js/smf.js.
+     *
+     * The page says which one, because it is the file's and not a constant: the same page plays a
+     * tune of straight sixteenths and one of 16th-note triplets, and the step is a different length
+     * of music in each. `snapped` is how many notes had to be moved onto it, which is 0 for every
+     * file that is on a grid at all - and worth saying out loud when it is not.
+     */
+    get grid() {
+        return this.song ? this.song.grid : '';
     }
 
     /**
@@ -86,12 +104,17 @@ export class Player {
         this.master.connect(this.ctx.destination);
 
         this.engines = await loadEngines();
-        this.tune = compileTune();
-        if (this.auditionOnly) this.tune = this.tune.filter((part) => part.id === AUDITION_PART);
+        // The tune is a MIDI file (src/tune/fluyt-tune.mid), and the facts the transport needs come
+        // out of it: the page does not assume a tempo or a step, it reads the one the music has.
+        this.song = await loadTune();
+        this.tune = this.auditionOnly
+            ? this.song.parts.filter((part) => part.id === AUDITION_PART)
+            : this.song.parts;
 
-        // a sixteenth note, at the exact fractional length the tempo works out to - not rounded,
-        // because rounding it would put the loop gradually out of phase with the beat
-        this.stepFrames = (this.sampleRate * 60) / (BPM * (STEPS_PER_BAR / 4));
+        // a sixteenth, or whatever the file's own grid is, at the exact fractional length the tempo
+        // works out to - not rounded, because rounding it would put the loop out of phase with the
+        // beat
+        this.stepFrames = (this.sampleRate * 60) / (this.song.bpm * (this.song.stepsPerBar / 4));
 
         for (const part of this.tune) {
             const node = new Part(this.ctx, this.cache, { id: part.id, role: part.role }, this.master);
