@@ -269,9 +269,28 @@ class FluytPartProcessor extends AudioWorkletProcessor {
         }
     }
 
-    /** Apply one step in full: close the gates it closes, open the ones it opens. */
+    /**
+     * Apply one step in full: close the gates it closes, open the ones it opens.
+     *
+     * The step number is the transport's, so the period is `totalSteps` - not `on.length`, which is
+     * one longer because of the wrap entry. Indexing by the array length is a step that is heard but
+     * never counted: the pattern runs 129 steps to the transport's 128, so each pass starts a
+     * sixteenth late, one more every loop, and the wrap entry - which opens nothing - lands on the
+     * frame the downbeat should be on. That is the skipped beat at the loop point.
+     */
     applyStep(step) {
-        const index = step % this.on.length;
+        const index = step % this.totalSteps;
+
+        // The wrap entry is not a step of the pattern: it is the notes a pass leaves sounding,
+        // released as the next pass begins. So it goes on step 0's own frame, closed before step 0's
+        // gates open - the same place stopping the transport would have closed them.
+        if (index === 0 && step > 0) this.applyEntry(this.totalSteps);
+
+        this.applyEntry(index);
+    }
+
+    /** One entry of the pattern: the gates it closes, then the notes it opens. */
+    applyEntry(index) {
         const offs = this.off[index];
         const ons = this.on[index];
 

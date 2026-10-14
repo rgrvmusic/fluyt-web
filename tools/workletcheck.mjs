@@ -252,9 +252,14 @@ async function main() {
     // The join begins by releasing everything - it cannot know what was sounding - and only then
     // re-articulates the step in progress. That release is not part of the pattern's schedule, so
     // it is taken out of the comparison here and counted on its own.
+    //
+    // The quanta are rounded up, so the log reaches a little past the last step and holds the far
+    // side of the loop point as well - the wrap entry and step 0 of the next pass. That boundary is
+    // what section 1b measures; here the claim is the pass itself, so the boundary is left to it.
+    const passEnd = totalSteps * stepFrames;
     const clears = log.events.filter((e) => e.kind === 'allOff').length;
     const played = log.events
-        .filter((e) => e.kind !== 'allOff')
+        .filter((e) => e.kind !== 'allOff' && e.frame < passEnd)
         .map((e) => ({ kind: e.kind, note: e.note, frame: e.frame }));
 
     if (clears !== 1) fail(`setting the pattern released everything ${clears} times, not once`);
@@ -322,6 +327,107 @@ async function main() {
         console.log(`    (a scheduler that added the step to a running position instead of ` +
                     `recomputing it would be ${(totalSteps * (Math.round(stepFrames) - stepFrames)).toFixed(1)} ` +
                     'frames out by now)');
+    }
+
+    // ---- 1b. the loop point: the second pass starts one period after the first, not one step
+    console.log('');
+    console.log('The loop point - two passes, not one:');
+
+    // The pad is the part that exercises this: its chord is held to the pattern's last step, so its
+    // wrap entry is the only one that is not empty, and the loop point is the only place it fires.
+    const pad = tune.find((p) => p.id === 'pad');
+    const held = pad.off[pad.steps];
+    if (!held.length) fail('no part holds a note across the loop point, so nothing here tests it');
+
+    const loopProcessor = await blankProcessor();
+    const loopReady = await loadInto(loopProcessor, engine);
+    loopProcessor.loadPreset(presetForRole('pad', loopReady.presetNames));
+
+    globalThis.currentFrame = 0;
+    const loopLog = instrument(loopProcessor);
+    await loopProcessor.port.deliver({
+        type: 'setPattern',
+        data: { on: pad.on, off: pad.off, stepFrames, epochFrame: 0 },
+    });
+
+    // Exactly short of the end of the second pass, so what is in the log is the two passes and not
+    // the boundary after them.
+    const passes = 2;
+    run(loopProcessor, loopLog, Math.floor((passes * totalSteps * stepFrames) / QUANTUM), null);
+
+    // What two passes ask for: the pattern, and then the pattern again with step 0 one period later.
+    // The wrap entry is not a step of its own - the notes a pass leaves sounding close as the next
+    // pass begins, which is the frame step 0 opens on - so they come first, on step 0's own frame.
+    const round = [];
+    for (let pass = 0; pass < passes; pass++) {
+        for (let s = 0; s < totalSteps; s++) {
+            const frame = (pass * totalSteps + s) * stepFrames;
+            if (s === 0 && pass > 0) for (const note of held) round.push({ kind: 'off', note, frame });
+            for (const note of pad.off[s]) round.push({ kind: 'off', note, frame });
+            for (const note of pad.on[s]) round.push({ kind: 'on', note, frame });
+        }
+    }
+
+    const playedRound = loopLog.events
+        .filter((e) => e.kind !== 'allOff' && e.frame < passes * totalSteps * stepFrames);
+    let loopDiff = -1;
+    for (let i = 0; i < Math.max(playedRound.length, round.length); i++) {
+        const p = playedRound[i];
+        const w = round[i];
+        // the order within a step is the step's own - the gates it closes, then the notes it opens -
+        // and so is the tolerance: at or after the boundary, less than a frame past it
+        if (!p || !w || p.kind !== w.kind || p.note !== w.note ||
+            p.frame < w.frame || p.frame >= w.frame + 1) {
+            loopDiff = i;
+            break;
+        }
+    }
+
+    const show = (e) => (e ? `${e.kind} ${e.note} at frame ${typeof e.frame === 'number' ? e.frame.toFixed(2) : e.frame}` : '-');
+
+    if (loopDiff >= 0) {
+        fail(`over two passes, event ${loopDiff} is ` +
+             `${playedRound[loopDiff] ? show(playedRound[loopDiff]) : 'nothing'}` +
+             ` where the pattern asks for ${round[loopDiff] ? show(round[loopDiff]) : 'nothing'}` +
+             ` (${playedRound.length} played, ${round.length} asked for)`);
+        for (let i = Math.max(0, loopDiff - 2); i < Math.min(playedRound.length, loopDiff + 3); i++) {
+            console.log(`      ${i}: played ${show(playedRound[i])}   wanted ${show(round[i])}`);
+        }
+    } else {
+        ok(`${round.length} note events over two passes, the second on the first pass's own frames ` +
+           `plus exactly one period`);
+    }
+
+    // The one number the extra entry in `on` moved: where the second pass's step 0 is, measured from
+    // where the first pass's step 0 was. Indexing by `on.length` instead of the step count puts it a
+    // step late, which is the skipped beat - and one more step every loop after that.
+    const downbeat = totalSteps * stepFrames;
+    const onsPerPass = pad.on.slice(0, totalSteps).reduce((n, entry) => n + entry.length, 0);
+    const secondPass = loopLog.events.filter((e) => e.kind === 'on')[onsPerPass];
+    if (!secondPass) {
+        fail('the second pass never opened a note - the loop did not come round');
+    } else {
+        const error = secondPass.frame - downbeat;
+        if (error < 0 || error >= 1) {
+            fail(`the second pass's step 0 is at frame ${secondPass.frame}, ${error.toFixed(2)} frames ` +
+                 `from one period (${downbeat.toFixed(2)}) - ${(error / stepFrames).toFixed(2)} steps ` +
+                 'out after a single loop');
+        } else {
+            console.log(`    pass 2's step 0 is at frame ${secondPass.frame}, one period ` +
+                        `(${downbeat.toFixed(2)}) after pass 1's - ${error.toFixed(4)} frames out`);
+        }
+
+        // and the notes the pass ended holding close on that same frame, before step 0's own ons -
+        // one event, not a step, which is what keeps them from being a silent sixteenth
+        const before = loopLog.events[loopLog.events.indexOf(secondPass) - 1];
+        if (!before || before.kind !== 'off' || before.frame !== secondPass.frame) {
+            fail(`the ${held.length} notes held to the end of the pass are not released on the frame ` +
+                 `the next one begins on (the event before step 0 is ${
+                     before ? `${before.kind} at frame ${before.frame}` : 'nothing'})`);
+        } else {
+            ok(`the ${held.length} notes held to the end close on that same frame, before step 0 ` +
+               'opens its own');
+        }
     }
 
     // ---- 2. the render blocks add up to the quantum, every time
