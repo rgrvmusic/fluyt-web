@@ -1,0 +1,222 @@
+/* SPDX-License-Identifier: MIT
+   Fluyt web - the browser preview of Felucca's engines as Fluyt units.
+   Copyright (C) 2026 Gerard Braad (Regroove | RGRV).
+
+   One stylesheet for both pages, and no framework, no web font and no image: this is embedded in
+   an iframe on an itch.io page, so every byte is one the host does not have to wait for, and every
+   request is one that can fail. The palette is the one Gerard set for the Fluyt pages.
+
+   The layout is a single column that survives being 320 px wide, because an itch.io iframe on a
+   phone is about that. Nothing is sized in a way that assumes a mouse: the controls are the
+   browser's own selects and buttons, which are already the right size on a touch screen. */
+
+:root {
+    --bg: #f7e9ce;
+    --fg: #222222;
+    --link: #694f3a;
+    --header: #513d2c;
+    --button: #694f3a;
+
+    /* the borders and the muted text are derived from the palette rather than added to it, so the
+       five colours above stay the five the page is specified in */
+    --rule: #c9b48d;
+    --muted: #6b5a45;
+    --button-fg: #ead8b6;
+    --panel: #e2cfa8;
+
+    --radius: 4px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--fg);
+}
+
+body {
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    padding: 14px;
+    /* the iframe is short; the page is allowed to scroll within it rather than clip */
+    min-height: 100%;
+}
+
+h1, h2, h3 {
+    color: var(--header);
+    margin: 0 0 .4em;
+    line-height: 1.2;
+}
+
+h1 { font-size: 1.35em; letter-spacing: .02em; }
+h2 { font-size: 1.02em; text-transform: uppercase; letter-spacing: .08em; margin-top: 1.2em; }
+
+a { color: var(--link); }
+a:hover { color: var(--header); }
+
+/* ---------------------------------------------------------------------------- the transport */
+
+.transport {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 4px;
+}
+
+button {
+    font: inherit;
+    color: var(--button-fg);
+    background: var(--button);
+    border: 0;
+    border-radius: var(--radius);
+    padding: 8px 20px;
+    cursor: pointer;
+}
+
+button:hover { background: var(--header); }
+button:disabled { opacity: .5; cursor: default; }
+
+button.secondary {
+    background: transparent;
+    color: var(--button);
+    border: 1px solid var(--button);
+}
+
+button.secondary[aria-pressed="true"] {
+    background: var(--button);
+    color: var(--button-fg);
+}
+
+/* ------------------------------------------------------------------------------- the controls */
+
+label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--muted);
+    font-size: .92em;
+    white-space: nowrap;
+}
+
+select {
+    font: inherit;
+    color: var(--fg);
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    padding: 5px 6px;
+    max-width: 100%;
+}
+
+select:disabled { opacity: .55; }
+
+/* One width for every selector, so the four rows read as a table and a short entry - "Drum kit" -
+   is not a visibly smaller control than a long one. A minimum rather than a fixed width, so a name
+   longer than this grows its own select instead of being clipped. */
+.row .picks select { min-width: 8.5em; }
+
+.row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 9px 0;
+    border-bottom: 1px solid var(--rule);
+}
+
+.row:last-child { border-bottom: 0; }
+
+.row .name {
+    min-width: 4.5em;
+    color: var(--header);
+    font-weight: 600;
+}
+
+/* a part's engine controls, laid out so the preset selector lines up between rows on a wide page */
+.row .picks {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+/* --------------------------------------------------------------------------------- the footer */
+
+footer {
+    margin-top: 1.4em;
+    padding-top: .9em;
+    border-top: 1px solid var(--rule);
+    color: var(--muted);
+    font-size: .82em;
+}
+
+footer p { margin: .35em 0; }
+
+/* The two warnings in the footer are empty on a page that is working - no error, and a browser that
+   gave us the 48 kHz these engines are built for - and an empty paragraph should take no room and
+   leave no gap. What is left of the footer is one line: attribution, licence and the other page. */
+footer p:empty { display: none; }
+
+.rate-warning {
+    color: #7a2e12;
+    font-weight: 600;
+}
+
+/* ----------------------------------------------------------------------------- the keyboard */
+
+.keyboard {
+    position: relative;
+    height: 110px;
+    margin: 10px 0 4px;
+    user-select: none;
+    touch-action: none;
+}
+
+/* White keys are laid out with flex; black keys are absolutely positioned over them at fixed
+   fractions of the white key's width, which is what makes the layout work at any width without
+   the page having to measure anything. */
+.keyboard .white {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: #fdf8ec;
+    border: 1px solid var(--rule);
+    border-radius: 0 0 var(--radius) var(--radius);
+}
+
+.keyboard .black {
+    position: absolute;
+    top: 0;
+    height: 62%;
+    background: #3a2f24;
+    border-radius: 0 0 var(--radius) var(--radius);
+    z-index: 2;
+}
+
+.keyboard .key.down { background: var(--button); border-color: var(--header); }
+.keyboard .black.down { background: var(--header); }
+
+.hint {
+    color: var(--muted);
+    font-size: .84em;
+    margin: .3em 0 .8em;
+}
+
+kbd {
+    font: inherit;
+    font-size: .92em;
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 0 4px;
+}
+
+.status { color: var(--muted); font-size: .84em; }
+
+@media (max-width: 420px) {
+    body { padding: 10px; }
+    .row .name { min-width: 3.6em; }
+    select { max-width: 46vw; }
+}

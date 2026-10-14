@@ -1,0 +1,85 @@
+# SPDX-License-Identifier: MIT
+# Fluyt web - the browser preview of Felucca's engines as Fluyt units.
+# Copyright (C) 2026 Gerard Braad (Regroove | RGRV).
+#
+# Build dist/ and publish it to Pages. dist/ is gitignored and nothing built is ever committed, so
+# this is the only place the site is produced and the repository stays source-only.
+
+name: Build and publish the preview
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "main"
+  pull_request: {}
+
+# What Pages needs: write to publish, and an id token to prove the deployment came from this
+# workflow. `contents: read` is the checkout.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# A run that is still going when a newer one starts is building a site nobody will see. The
+# exception is a deploy in flight, which should finish rather than leave the site half-updated.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      # Recursive, because the preview needs the engine sources and Felucca nested inside them.
+      - name: Check out the submodules
+        run: git submodule update --init --recursive
+
+      # Pinned to the version the build is developed against. emcc's output is not identical
+      # between releases - the glue's tail has moved before now, and the loader in the worklet
+      # handles both forms for that reason - so an unpinned toolchain would mean a site that
+      # differs from the one that was checked, for a reason nothing in the repository records.
+      - name: Install the emsdk
+        run: |
+          git clone --depth 1 https://github.com/emscripten-core/emsdk.git $HOME/emsdk
+          $HOME/emsdk/emsdk install 6.0.9
+          $HOME/emsdk/emsdk activate 6.0.9
+          # Only emcc is needed from it: the checks are run with the runner's own node, so the node
+          # the emsdk ships is deliberately not put on PATH.
+          echo "$HOME/emsdk/upstream/emscripten" >> $GITHUB_PATH
+
+      # Before anything is published: nine modules that load and sound, a page whose ids and imports
+      # resolve, and the whole tune rendered offline through every engine.
+      - name: Check
+        run: make check
+
+      - name: Build
+        run: make
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload the site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/
+
+  deploy:
+    name: Deploy
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

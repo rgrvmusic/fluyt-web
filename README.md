@@ -1,0 +1,184 @@
+Fluyt demo for the web
+======================
+
+
+### Felucca's engines, played in a browser
+
+[Fluyt](https://github.com/rgrvmusic/fluyt-logue) ships Felucca's nine sound engines as
+logue units - nine for the KORG drumlogue, nine for the microKORG2. This is how they sound before
+you install anything: the same engines, from the same sources, compiled to WebAssembly, playing a
+short tune on a page you can open.
+
+It is a preview, not a port and not an emulation. Each engine here is Felucca's C, at the same
+48 kHz, through the same bridge the units use - what differs is the panel, which is this page
+instead of a drumlogue.
+
+- The page opens on a four-part tune - bass, lead, pad and drums, on four different engines.
+- Every part's engine and preset can be changed **while it plays**, without a click.
+- `Random` gives the bass, the lead and the chords three different engines, drawn at random -
+  press it as often as you like, and a few presses have been over most of the nine.
+- A second page adds a keyboard and a MIDI input, for playing an engine rather than hearing the
+  tune.
+
+
+#### The two pages
+
+| | |
+| --- | --- |
+| `index.html` | The tune, the part selectors and the Random button. Small, self-contained, no permissions. This is the one that goes in the itch.io iframe. |
+| `keyboard.html` | The same, plus an on-screen keyboard, the computer keyboard (Z-row and Q-row, `←`/`→` to shift octave) and a WebMIDI input. |
+
+They are two pages rather than one because a cross-origin iframe - which is what the itch.io embed
+is - does not reliably get WebMIDI permission, and a page offering an input selector it cannot use
+is worse than one that does not offer it.
+
+
+#### Building
+
+```sh
+git clone --recurse-submodules <this repository>
+cd fluyt-web
+source ~/Applications/emsdk/emsdk_env.sh     # emcc 6.0.9
+make                                          # -> dist/
+make check                                    # engines, page and tune
+make serve                                    # http://localhost:8000/
+```
+
+`make serve` is not a convenience. The page is ES modules and it loads an `AudioWorklet`, and a
+browser refuses both from `file://` - so opening `dist/index.html` directly gives a blank page
+whatever is right with the build.
+
+
+| | |
+| --- | --- |
+| `make` | `dist/` - the nine modules, then the page over them. This is what gets deployed. |
+| `make wasm` | just `dist/wasm/`, for iterating on the C |
+| `make check` | `smoke` + `pagecheck` + `tunecheck` + `workletcheck`, below |
+| `make serve` | `dist/` on `:8000` |
+| `make clean` | remove `dist/` and `build/` |
+
+Nothing built is committed: `dist/` and `build/` are gitignored, and the repository is source-only.
+
+
+#### The checks
+
+| | |
+| --- | --- |
+| `tools/smoke.mjs` | each of the nine modules loads through the worklet's own loader, names itself, and renders every preset it claims - so a module that loads and stays silent fails here |
+| `tools/pagecheck.mjs` | every module parses and its imports resolve, every file a page asks for is there, and every id a script looks up is in the markup - the three ways the page's own layer breaks without any engine being at fault |
+| `tools/tunecheck.mjs` | the whole tune, on every engine, on every part, offline: step counts, non-finite samples, silence, and the mix against full scale |
+| `tools/workletcheck.mjs` | the worklet itself, run outside a browser: where every note lands, whether the frame count is right, mid-tune joins, and stop |
+
+`tunecheck` is what catches a mistake in the notation or a preset that is not there without needing
+a browser, and it writes `build/tunecheck/fluyt-tune.wav` - the tune as the page opens, trimmed as
+the page trims it - so it can be listened to.
+
+`workletcheck` stands in for an `AudioWorkletGlobalScope` and drives the real processor, which is
+the only way the sample-accurate scheduling gets checked by anything but an ear. It measures the
+frame each note starts on and asserts each one is at or after its step and less than a frame past
+it, that every quantum renders exactly 128 frames across however many blocks a step split it into,
+and that a node joining a tune already playing lands on the tune's own step rather than starting
+its own bar one. The step length is 6428.571... frames, so this is where rounding it would fail.
+
+
+#### The tune
+
+Eight bars in A minor at 112 BPM, four parts, written by hand in a step notation
+(`src/js/pattern.js`) that reads a bar at a time:
+
+```
+bass:   "A1 . A1 . A1 . A1 . A1 . A1 . A1 . A1 ."
+pad:    "A2+C3+E3 - - - - - - - - - - - - - - -"
+drums:  "36+42 . 42 . 38+42 . 42 . 36+42 . 42 ."
+```
+
+A token is a note (`A1`, or a MIDI number like `36` for the drum part), several joined with `+`,
+`.` for a rest, or `-` to hold. It is an original tune: the shape is a sea shanty's, because the
+page it plays on is a Fluyt page and a Fluyt is a ship, but it is not a quotation of any shanty.
+
+`compileTune()` refuses to build if a part is not exactly eight bars of sixteen, which is the
+mistake the notation makes easiest - and the one that would otherwise arrive as a part that is
+quietly a step out of phase for the whole loop.
+
+
+#### Presets, by name
+
+Preset indices are not comparable across engines - ANALOG's 3 is not TRIO's 3 - and they move when
+an engine gains a preset. So no part names an index. Each part names a **role** (`bass`, `lead`,
+`pad`, `drum`) and the preset is the first whose *name* matches it, read from the module at
+runtime. An engine with nothing bass-like in it plays its first sound, which is the right thing for
+a preview of that engine to do.
+
+
+#### Sample rate
+
+Felucca's tables are generated for a sample rate and `fluyt_init` only records the rate it is
+handed - nothing resamples. So `tools/gen-tables.sh` generates them at **48 kHz** and the page
+constructs its `AudioContext` at 48000 to match. At the 44.1 kHz most hardware defaults to, every
+engine would play 8.8% flat and slow: audible as an engine that is out of tune with itself, and
+wrong in exactly the way that would make a preview useless.
+
+Where a browser cannot give 48000, the page says so in its footer rather than pretending.
+
+
+#### Levels
+
+Each engine arrives at roughly full scale on its own and the page plays four at once, so the four
+parts run into a master gain of `0.35` (`src/js/mix.js`) rather than straight into the output. It
+is a trim and not a limiter, deliberately: this page exists so a visitor can hear what an engine
+sounds like, and a compressor on the master bus changes the attack and the punch of exactly what
+they came to hear.
+
+The number is derived, not chosen - `tunecheck` sums the loudest peak each part reaches over all
+nine engines and asserts that even that worst case stays inside full scale - so a future preset
+that is louder than the ones measured fails the check rather than arriving as a clipped preview.
+
+
+#### The worklet
+
+One `AudioWorkletProcessor` per part, each one engine. Web Audio mixes the nodes, so four parts on
+four engines needs no mixing code.
+
+Sequencing is sample-accurate rather than timer-driven: the transport is an **epoch frame** - the
+absolute frame at which step 0 begins - and the worklet splits each 128-frame quantum at step
+boundaries, so onsets land on the exact sample and a node built halfway through a bar joins where
+the bar already is, re-articulating whatever note is currently held. A `setTimeout` here would
+drift against the audio clock, and it would drift differently on each of the four parts.
+
+Loading is the one thing that needs care: Emscripten's glue cannot instantiate in a worklet by
+`wasmBinary` alone, because it ignores that and tries to `fetch()` the `.wasm` - impossible inside
+a worklet. So the glue is evaluated in a fake CommonJS scope with an `instantiateWasm` hook doing
+the instantiation directly. `tools/smoke.mjs` and `tools/tunecheck.mjs` load the modules the same
+way, deliberately: a module that loads here but not there would otherwise be found only in a
+browser.
+
+
+#### The browser ABI
+
+The modules speak **`regroove_synth_*`**, the ABI Regroove's own worklet already binds
+(`rfx/web/replugged/worklets/synth-worklet-processor.js`). That is the one part of this repository
+that is not free to change: a synth there is bound by name, and a name that does not match is a
+synth that loads, reports ready, and makes no sound - with no error anywhere. Every name
+`wasm/wasm_bindings.c` exports is spelled out by hand in `plugins/platform.mk` so that a rename
+fails the link instead of silently exporting something else, and `tools/smoke.mjs` asserts all of
+them against the real modules.
+
+So these modules can be dropped into `rfx/web/rfxsynths/` unchanged. Nothing here needs `rfx`, and
+nothing here changes it.
+
+
+#### Publishing
+
+`.github/workflows/pages.yml` builds and deploys `dist/` to GitHub Pages on every push to `main`,
+with the emsdk pinned to the same 6.0.9 the local build uses and `make check` run first. Point the
+itch.io iframe at the Pages URL; `index.html` is the page for it.
+
+
+#### Licence
+
+The page, the worklet, the JavaScript, `wasm/wasm_bindings.c` and the build scripts are **MIT**.
+The compiled modules in `dist/wasm/` are **GPL-3.0-only**, because each one contains Felucca's
+GPL-3.0 source - and, for FM6, msfa's Apache-2.0. [LICENSING.md](LICENSING.md) has the split and the
+source offer; the page footer carries it too, since a page that serves GPL binaries is where a
+visitor would look for it.
+

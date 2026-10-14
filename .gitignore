@@ -1,0 +1,11 @@
+# The built site. `make` fills it in; the GitHub workflow uploads it as the
+# Pages artifact. Nothing here is checked in -- the modules are compiled from
+# vendor/ at build time, so the corresponding source is always the submodule pin.
+/dist/
+
+# Felucca's lookup tables, regenerated for 48 kHz by build-wasm.sh. 500 KB of a
+# generator's output, correct for one rate, and the generator says which.
+/build/
+
+node_modules/
+.DS_Store

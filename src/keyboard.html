@@ -1,0 +1,56 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: MIT
+     Fluyt web - the browser preview of Felucca's engines as Fluyt units.
+     Copyright (C) 2026 Gerard Braad (Regroove | RGRV).
+
+     The auditioning page: one engine, one preset, and a keyboard to play them with. This is where an
+     engine is heard properly, by hand.
+
+     There is no tune here and no transport. A four-part table and a Play button were carried over
+     from index.html, and on this page they were an offer to listen to something else - the visitor
+     came to play. The page builds only the one part it plays, so the other three engines are not
+     even loaded.
+
+     It is a separate page from index.html because a cross-origin iframe - which is what the itch.io
+     embed is - does not reliably get WebMIDI permission, and a page offering an input selector it
+     cannot use is worse than one that does not offer it. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fluyt  demo - play the engines</title>
+<meta name="description" content="Play Fluyt's nine drumlogue sound engines by hand, from a computer keyboard or a MIDI controller.">
+<link rel="stylesheet" href="css/theme.css">
+</head>
+<body>
+
+<h1>Fluyt demo - play the engines</h1>
+
+<div class="row">
+    <label><span>Engine</span> <select id="engine"></select></label>
+    <label><span>Preset</span> <select id="preset"></select></label>
+</div>
+
+<h2>Keyboard</h2>
+<p class="hint">Play with the <kbd>Z</kbd>–<kbd>M</kbd> row (lower octave) or the
+<kbd>Q</kbd>–<kbd>P</kbd> row (upper), and shift the octave with <kbd>←</kbd> and <kbd>→</kbd>.
+<select id="octave-select" aria-label="Octave"></select></p>
+<div class="keyboard" id="keyboard"></div>
+
+<h2>MIDI input</h2>
+<div class="row">
+    <select id="midi-input" aria-label="MIDI input"><option value="">—</option></select>
+    <span class="status" id="midi-status"></span>
+</div>
+
+<footer>
+    <p id="error" class="rate-warning"></p>
+    <p id="rate-note" class="rate-warning"></p>
+    <p>Engines: Felucca © Hügelton Instruments, GPL-3.0 ·
+       <a href="https://github.com/rgrvmusic/fluyt-logue">source</a> · page MIT ·
+       <a href="index.html">← play a demo tune</a></p>
+</footer>
+
+<script type="module" src="js/keyboard-app.js"></script>
+</body>
+</html>

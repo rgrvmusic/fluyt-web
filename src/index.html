@@ -1,0 +1,45 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: MIT
+     Fluyt web - the browser preview of Felucca's engines as Fluyt units.
+     Copyright (C) 2026 Gerard Braad (Regroove | RGRV).
+
+     The page that goes in the iframe on the itch.io page. Deliberately small: a Play button, a Random
+     button, and the four parts. No knob panel (a later enhancement), no keyboard, and nothing to
+     read that is not needed to press Play.
+
+     It is a separate page from keyboard.html because a cross-origin iframe does not reliably get
+     WebMIDI permission, and a page that offers an input selector it cannot use is worse than one
+     that does not offer it. Everything shared between the two is shared: theme.css, the worklet,
+     and src/js/{fluyt,tune,pattern,player,ui}.js. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fluyt demo - hear the engines</title>
+<meta name="description" content="A browser preview of Fluyt's nine sound engines for the KORG drumlogue, playing a short tune.">
+<link rel="stylesheet" href="css/theme.css">
+</head>
+<body>
+
+<h1>Fluyt demo - hear the engines</h1>
+
+<div class="transport">
+    <button id="play" type="button">Play</button>
+    <button id="random" class="secondary" type="button"
+            title="Put a different engine across the bass, the lead and the chords">Random</button>
+    <span class="status" id="transport-status"></span>
+</div>
+
+<div id="parts"></div>
+
+<footer>
+    <p id="error" class="rate-warning"></p>
+    <p id="rate-note" class="rate-warning"></p>
+    <p>Engines: Felucca © Hügelton Instruments, GPL-3.0 ·
+       <a href="https://github.com/rgrvmusic/fluyt-logue">source</a> · page MIT ·
+       <a href="keyboard.html">play with a keyboard or MIDI →</a></p>
+</footer>
+
+<script type="module" src="js/iframe-app.js"></script>
+</body>
+</html>

@@ -1,0 +1,3 @@
+[submodule "vendor/fluyt-logue"]
+	path = vendor/fluyt-logue
+	url = https://github.com/rgrvmusic/fluyt-logue.git
