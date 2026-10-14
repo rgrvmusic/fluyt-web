@@ -65,6 +65,12 @@ a:hover { color: var(--header); }
     margin-bottom: 4px;
 }
 
+/* A button's label is not fixed - Play becomes Stop, Mute becomes Muted - and a button sized to its
+   label moves every control beside it when the label changes, which reads as the page being unsettled
+   rather than as one word changing. So every button is given one width, wide enough for the longest
+   label on either page ("Random"), and the labels change inside it.
+   A minimum rather than a width, so a translation or a fallback font that renders a label wider than
+   this grows its own button instead of clipping the word. */
 button {
     font: inherit;
     color: var(--button-fg);
@@ -72,6 +78,8 @@ button {
     border: 0;
     border-radius: var(--radius);
     padding: 8px 20px;
+    min-width: 7em;
+    text-align: center;
     cursor: pointer;
 }
 
