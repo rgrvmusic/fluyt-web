@@ -90,8 +90,10 @@ export class Part {
         this.presetIndex = 0;
         this.engineName = '';
 
-        // the transport, kept here so a node swapped in later can be handed the same position
+        // the transport, kept here so a node swapped in later can be handed the same position - and
+        // only while it is running, which is what `running` is for
         this.pattern = null;
+        this.running = false;
         this.epochFrame = 0;
         this.stepFrames = 0;
 
@@ -156,17 +158,7 @@ export class Part {
         const index = Math.max(0, Math.min(wanted, names.length - 1));
         node.port.postMessage({ type: 'loadPreset', data: { index } });
 
-        if (this.pattern) {
-            node.port.postMessage({
-                type: 'setPattern',
-                data: {
-                    on: this.pattern.on,
-                    off: this.pattern.off,
-                    stepFrames: this.stepFrames,
-                    epochFrame: this.epochFrame,
-                },
-            });
-        }
+        this.sendPattern(node);
 
         const oldNode = this.node;
         const oldGain = this.swapGain;
@@ -220,17 +212,32 @@ export class Part {
 
     setPattern(pattern) {
         this.pattern = pattern;
-        if (this.node) {
-            this.node.port.postMessage({
-                type: 'setPattern',
-                data: {
-                    on: pattern.on,
-                    off: pattern.off,
-                    stepFrames: this.stepFrames,
-                    epochFrame: this.epochFrame,
-                },
-            });
-        }
+        if (this.node) this.sendPattern(this.node);
+    }
+
+    /**
+     * Hand a node the pattern, and - only while the transport is running - where in it the tune is.
+     *
+     * `stepFrames` of 0 is the worklet's word for "no transport": it takes the notes and arms nothing,
+     * which is what a page that is stopped wants and what Play then ends.
+     *
+     * A node swapped in while the page is stopped would otherwise be handed the last epoch this part
+     * saw, which is by then in the past - and the worklet, told where the tune is, works out which
+     * step that lands on now, re-articulates it, and starts playing. Only the parts that were swapped
+     * do, so a stopped page that Random appears to start is three parts of the four, and the one it
+     * does not touch - the drums - joins only when Play is pressed.
+     */
+    sendPattern(node) {
+        if (!this.pattern) return;
+        node.port.postMessage({
+            type: 'setPattern',
+            data: {
+                on: this.pattern.on,
+                off: this.pattern.off,
+                stepFrames: this.running ? this.stepFrames : 0,
+                epochFrame: this.running ? this.epochFrame : 0,
+            },
+        });
     }
 
     /**
@@ -241,13 +248,20 @@ export class Part {
     setTransport(epochFrame, stepFrames) {
         this.epochFrame = epochFrame;
         this.stepFrames = stepFrames;
+        this.running = true;
         if (this.node) {
             this.node.port.postMessage({ type: 'setTransport', data: { epochFrame, stepFrames } });
         }
     }
 
-    /** Stop following the transport, and silence whatever is sounding. */
+    /**
+     * Stop following the transport, and silence whatever is sounding.
+     *
+     * The position is kept, because Play hands a new one over anyway - what changes here is that it
+     * stops being a position anything is sent: see sendPattern.
+     */
     stop() {
+        this.running = false;
         if (this.node) this.node.port.postMessage({ type: 'stop' });
     }
 

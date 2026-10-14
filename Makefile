@@ -26,7 +26,7 @@ WASM_DIR := $(DIST)/wasm
 # need compiling belongs in plugins/ with the rest of the C.
 PAGE_SRC := src
 
-.PHONY: all wasm page midi check smoke pagecheck midicheck tunecheck workletcheck serve clean
+.PHONY: all wasm page midi check smoke pagecheck swapcheck midicheck tunecheck workletcheck serve clean
 
 all: page
 
@@ -64,13 +64,17 @@ midi:
 # --------------------------------------------------------------------------------------------
 # check
 
-check: smoke pagecheck midicheck tunecheck workletcheck
+check: smoke pagecheck swapcheck midicheck tunecheck workletcheck
 
 smoke: wasm
 	@node tools/smoke.mjs
 
 pagecheck:
 	@node tools/pagecheck.mjs
+
+# no wasm: the node it drives is fake, and what is real is the class under test
+swapcheck:
+	@node tools/swapcheck.mjs
 
 midicheck:
 	@node tools/midicheck.mjs

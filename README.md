@@ -56,7 +56,7 @@ whatever is right with the build.
 | `make` | `dist/` - the nine modules, then the page over them. This is what gets deployed. |
 | `make wasm` | just `dist/wasm/`, for iterating on the C |
 | `make midi` | write the notation in `src/js/tune.js` out to `src/tune/fluyt-tune.mid`, after editing it |
-| `make check` | `smoke` + `pagecheck` + `midicheck` + `tunecheck` + `workletcheck`, below |
+| `make check` | `smoke` + `pagecheck` + `swapcheck` + `midicheck` + `tunecheck` + `workletcheck`, below |
 | `make serve` | `dist/` on `:8000` |
 | `make clean` | remove `dist/` and `build/` |
 
@@ -72,6 +72,7 @@ is written from the notation by `make midi`, and `midicheck` fails if the two ha
 | --- | --- |
 | `tools/smoke.mjs` | each of the nine modules loads through the worklet's own loader, names itself, and renders every preset it claims - so a module that loads and stays silent fails here |
 | `tools/pagecheck.mjs` | every module parses and its imports resolve, every file a page asks for is there - in the markup or built at runtime - and every id a script looks up is in the markup |
+| `tools/swapcheck.mjs` | the engine swap, from the main thread: that a swap does not start a page that is stopped, that one made while it plays joins the tune where it is, and that neither the incoming nor the outgoing node is ever heard at a gain that would make a click |
 | `tools/midicheck.mjs` | the tune: that `src/tune/fluyt-tune.mid` is still what the notation says, that it reads back through `src/js/smf.js` as those notes on those steps, and that the grid, the length and the awkward files are handled the way the comments claim |
 | `tools/tunecheck.mjs` | the whole tune, on every engine, on every part, offline: non-finite samples, silence, and the mix against full scale |
 | `tools/workletcheck.mjs` | the worklet itself, run outside a browser: where every note lands, whether the frame count is right, the loop point, mid-tune joins, and stop |
@@ -83,6 +84,13 @@ a step, fails here rather than in a browser. The rest of it is the reader's own 
 fixture per grid on the ladder, a file that is on none of them, a format 0 file (everything on one
 track, told apart by channel), a note held past the end of the file, a note of no length, an off with
 no on, a file with no tempo, a file that changes tempo, and a file with more parts than the page has.
+
+`swapcheck` is the page half of the swap - `Part`, in `src/js/fluyt.js` - driven with three fake
+browser objects instead of a real one, because that class needs an `AudioContext` and a worklet to run
+at all and so had only ever been exercised by ear. It is where a stopped page that `Random` appeared
+to start was caught: a part kept the last transport it was handed and passed it to any node it built,
+so a node swapped in while the page was stopped was given an epoch already in the past, and started
+playing. `Random` leaves the drums alone, which is why three parts of the four came back.
 
 `tunecheck` is what catches a preset that is not there without needing a browser, and it writes
 `build/tunecheck/fluyt-tune.wav` - the tune as the page opens, trimmed as the page trims it - so it
