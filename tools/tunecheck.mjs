@@ -13,8 +13,8 @@
 // the drum part - so what it measures is the tune and not a synthetic note.
 //
 // Every tune in TUNES is run through, each against its own file, tempo and grid, and each with its
-// own trim bound: two tunes are two things the page plays, never at once, so neither can be the
-// other's worst case. The engines are loaded once and the tunes go through what is already there.
+// own trim bound: the page plays one tune at a time, so no tune can be another's worst case. The
+// engines are loaded once and the tunes go through what is already there.
 //
 // It imports src/js/pattern.js, src/js/smf.js and src/js/tune.js, which are the files the page itself
 // loads, and it renders the MIDI files the page plays rather than the notation - so what is rendered
@@ -280,7 +280,7 @@ async function checkTune(notation, engines, loaded) {
     // by any combination: the sum over the parts of the loudest peak each part reaches. Parts do
     // not all peak on the same sample, so that sum is an upper bound rather than a prediction -
     // which is exactly what makes it a bound for every combination and not just the loud ones. It is
-    // a bound per tune, not across them: two tunes are two things the page plays, never at once.
+    // a bound per tune, not across them: the page plays one tune at a time.
     console.log('');
     console.log('The mix:');
 

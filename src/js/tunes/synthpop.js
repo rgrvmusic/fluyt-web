@@ -11,9 +11,10 @@
 // deliberately the other side of the shanty: where that one is a call answered by a response, this one
 // is a loop that repeats, and the hook is the only thing that moves.
 //
-// It is here because one tune cannot show what choosing a tune does. Its engines are not the shanty's
-// - LOFI for the bass, PHASE for the hook, FM6 for the chords, DRUM for the kit - so switching between
-// the two changes the sound and not only the notes, which is the point of the picker.
+// It is here because one tune cannot show what choosing a tune does. Its engines are its own
+// combination - LOFI for the bass, PHASE for the hook, FM6 for the chords, DRUM for the kit - and no
+// other tune here names those three for the bass, the lead and the chords, so choosing between two
+// tunes changes the sound and not only the notes, which is the point of the picker.
 //
 // The four parts, and what each lets a visitor hear an engine do:
 //
@@ -40,8 +41,9 @@ export const BARS = 8;
 export const FILE = 'fluyt-synthpop.mid';
 export const SONG_URL = new URL(`../../tune/${FILE}`, import.meta.url);
 
-// The engines the parts start on, by slug from dist/wasm/engines.json. None of them is an engine the
-// shanty uses, so that choosing a tune is a change you can hear and not only one you can read.
+// The engines the parts start on, by slug from dist/wasm/engines.json. The set is this tune's own:
+// PHASE and DRUM are engines the shanty uses too, but on other parts, and no tune here pairs these
+// three. Choosing a tune is a change you can hear and not only one you can read.
 export const ENGINES = {
     bass: 'lofi',
     lead: 'phase',

@@ -10,9 +10,13 @@
 // one of them walks this list rather than naming a tune of its own.
 
 import * as shanty from './shanty.js';
+import * as chiptune from './chiptune.js';
 import * as synthpop from './synthpop.js';
+import * as house from './house.js';
+import * as bossa from './bossa.js';
+import * as ballad from './ballad.js';
 
-export const TUNES = [shanty, synthpop];
+export const TUNES = [shanty, chiptune, synthpop, house, bossa, ballad];
 
 /** The tune the page opens on, and the one every tool reads by default. */
 export const DEFAULT_TUNE_ID = shanty.ID;

@@ -11,7 +11,7 @@
 // produces a tune, just not this one. So every file is read here by the same parser the page loads,
 // and what comes back is compared to the notation it was written from, note for note and step for
 // step. Every tune in TUNES is checked, and each against its own facts: the tempo, the grid and the
-// number of bars are the tune's, and two tunes need not agree about any of them.
+// number of bars are the tune's, and no two tunes need agree about any of them.
 //
 // The rest of the file is about the reader's own decisions, which nothing else checks:
 //

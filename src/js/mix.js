@@ -17,11 +17,15 @@
 //
 // Why 0.35. It is measured, not chosen: the check's worst case is the sum of the loudest peak each
 // part reaches over all nine engines, and the loudest tune is the one that decides it. That is the
-// synthpop tune, at 0.607 + 0.587 + 0.638 + 0.741 = 2.572 - no combination of engines on any part of
-// any tune can exceed it, so a trim of 0.35 leaves the worst mix this page can reach at 0.900 of full
-// scale, inside full scale with margin. (The shanty's own worst case is 2.510, or 0.878.) What the
-// page opens with sits at 0.500 on the synthpop and 0.604 on the shanty, because a tune is also which
-// engines it named.
+// chiptune, at 0.606 + 0.671 + 0.731 + 0.729 = 2.737 - no combination of engines on any part of any
+// tune can exceed it, so a trim of 0.35 leaves the worst mix this page can reach at 0.958 of full
+// scale: inside full scale, with 4% to spare. It is the narrowest margin here and that tune earns it,
+// striking its bass on every one of its 128 steps and its kit 164 times; the next worst are the bossa
+// at 2.671 (0.935) and the house at 2.644 (0.925), and the quietest is the ballad at 2.400 (0.840).
+//
+// What the page *opens* on is lower than any of those, because a tune is also which engines it named:
+// 0.604 on the shanty and 0.641 on the ballad - the highest of the six, since FORMANT's three voice
+// presets all sit near 0.6 - and between 0.453 and 0.516 on the other four.
 //
 // tunecheck asserts that sum against this number rather than trusting it, per tune, so a future tune
 // or preset that is louder than the ones measured fails the check and asks for this to be revisited,

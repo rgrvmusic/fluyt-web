@@ -81,7 +81,7 @@ export function partEvents(part, channel, ticksPerStep) {
  * One tune's notation, as a MIDI file: one track per part, one channel each, named for the part.
  *
  * `notation` is a module out of src/js/tunes/. Everything in the file is that tune's own - its tempo,
- * its division into steps, how many parts it has - so two tunes in this repository need not agree
+ * its division into steps, how many parts it has - so no two tunes in this repository need agree
  * about any of it.
  */
 export function buildTuneMidi(notation) {

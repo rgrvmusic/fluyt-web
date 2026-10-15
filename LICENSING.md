@@ -19,10 +19,10 @@ The page and everything it is made of is **MIT**, copyright (C) 2026 Gerard Braa
 | `plugins/`, `build-wasm.sh`, `Makefile` | the build |
 | `tools/` | the checks |
 
-Nothing here is anyone else's music. Both tunes are original, and each file is generated from this
-repository's own notation, so there is no sample, no transcription and no quotation to clear - and
-none to attribute. A MIDI file a visitor loads is theirs: the page reads it in the browser and plays
-it, and nothing about it is uploaded, stored or sent anywhere.
+Nothing here is anyone else's music. Every tune here is original - a style, not a song - and each
+file is generated from this repository's own notation. So there is no sample, no transcription and
+no quotation to clear - and none to attribute. A MIDI file a visitor loads is theirs: the page reads
+it in the browser and plays it, and nothing about it is uploaded, stored or sent anywhere.
 
 
 ## The compiled modules - GPL-3.0-only
