@@ -228,3 +228,8 @@ kbd {
     .row .name { min-width: 3.6em; }
     select { max-width: 46vw; }
 }
+
+.fineprint {
+    font-size: 0.7em;
+    font-style: italic;
+}
