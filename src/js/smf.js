@@ -2,14 +2,15 @@
 // Fluyt web - the browser preview of Felucca's engines as Fluyt units.
 // Copyright (C) 2026 Gerard Braad (Regroove | RGRV).
 //
-// The tune is a Standard MIDI File - src/tune/fluyt-tune.mid, written by tools/tune-to-mid.mjs - and
-// this is what reads one. It is named smf.js and not midi.js because src/js/midi.js is already the
-// WebMIDI *input*, which is a different thing that happens to share a word.
+// A tune is a Standard MIDI File - src/tune/, written by tools/tune-to-mid.mjs - and this is what
+// reads one, whether it is a tune the page ships with or a file a visitor brought. It is named smf.js
+// and not midi.js because src/js/midi.js is already the WebMIDI *input*, which is a different thing
+// that happens to share a word.
 //
 // A MIDI file is a header and a list of tracks, each a list of (delta time, event) pairs. What this
 // reads is the note events in it; what it does with them is turn them into the two arrays the worklet
 // takes - which notes open on a step, and which close - so that a file written in a DAW reaches the
-// engines by the same path the notation in src/js/tune.js describes.
+// engines by the same path the notation in src/js/tunes/ describes.
 //
 // ---------------------------------------------------------------------------------------------
 // The grid, which is the one real decision in here

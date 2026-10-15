@@ -16,13 +16,15 @@
 // kick, the attack of a bass. A fixed trim changes the level and nothing else.
 //
 // Why 0.35. It is measured, not chosen: the check's worst case is the sum of the loudest peak each
-// part reaches over all nine engines, which for this tune is 0.574 + 0.573 + 0.630 + 0.734 = 2.511.
-// No combination of engines can exceed that, so a trim of 0.35 leaves the page's worst reachable
-// mix at 0.879 of full scale - inside full scale with margin, for every engine on every part. What
-// the page opens with sits at 0.591.
+// part reaches over all nine engines, and the loudest tune is the one that decides it. That is the
+// synthpop tune, at 0.607 + 0.587 + 0.638 + 0.741 = 2.572 - no combination of engines on any part of
+// any tune can exceed it, so a trim of 0.35 leaves the worst mix this page can reach at 0.900 of full
+// scale, inside full scale with margin. (The shanty's own worst case is 2.510, or 0.878.) What the
+// page opens with sits at 0.500 on the synthpop and 0.604 on the shanty, because a tune is also which
+// engines it named.
 //
-// tunecheck asserts that sum against this number rather than trusting it, so a future preset that
-// is louder than the ones measured fails the check and asks for this to be revisited, instead of
-// arriving as a clipped preview.
+// tunecheck asserts that sum against this number rather than trusting it, per tune, so a future tune
+// or preset that is louder than the ones measured fails the check and asks for this to be revisited,
+// instead of arriving as a clipped preview.
 
 export const MASTER_GAIN = 0.35;

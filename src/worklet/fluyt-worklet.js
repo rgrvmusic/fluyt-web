@@ -204,18 +204,21 @@ class FluytPartProcessor extends AudioWorkletProcessor {
      * The part's notes and where the tune is. `on` and `off` are arrays indexed by step and carry
      * one entry past the end - the wrap step - which is where a note still held at the end of the
      * pattern is released.
+     *
+     * The notes and the transport are two facts and either may arrive without the other: the page
+     * hands a part its notes before the context has told it the rate, and it hands it a new tune's
+     * notes while the page is stopped. A pattern without a transport is notes the part holds and
+     * does not play - see setTransport.
      */
-    setPattern({ on, off, stepFrames, epochFrame }) {
+    setPattern({ on, off, stepFrames = 0, epochFrame = 0 }) {
         this.on = on;
         this.off = off;
         this.totalSteps = on.length - 1;
-        // A step length of zero is not a tempo, it is "not known yet" - the main thread hands the
-        // pattern over before the context has told it the rate. Taking it would leave the transport
-        // disarmed below and the engine silent, which is a state the page cannot get out of by
-        // asking it to play: it would have to replace the engine. Ignore it and wait for the
-        // transport, which carries the step length with the epoch.
-        if (stepFrames) this.stepFrames = stepFrames;
-        this.setTransport(epochFrame);
+        // The notes are taken whether or not a transport comes with them - they are what the part
+        // plays, and the page hands them over on their own before the context has told it the rate.
+        // The step length decides whether anything is armed, and setTransport is where that is
+        // decided, so it is given the step length rather than left to find one.
+        this.setTransport(epochFrame, stepFrames);
     }
 
     /**
@@ -231,10 +234,23 @@ class FluytPartProcessor extends AudioWorkletProcessor {
      * The step length comes with it. Where the tune is and how long a step is are one fact - a frame
      * position is meaningless without both - so they are sent together rather than left for the
      * pattern message to have got right earlier.
+     *
+     * A step length of zero is not a tempo, it is "no transport": nothing is armed and what is
+     * sounding is released. That is how the page says "stopped" - it is the transport a part is
+     * given along with a new tune's notes, at init and on every tune swapped in while the page is
+     * stopped. Taking the zero and arming against the step length this part last had would start it
+     * playing a tune nobody asked for, and the epoch it comes with (0) would put every step of the
+     * pattern between then and now on one frame.
      */
     setTransport(epochFrame, stepFrames = 0) {
-        if (stepFrames) this.stepFrames = stepFrames;
-        if (!this.stepFrames || !this.totalSteps) return;
+        if (!stepFrames) {
+            this.stepFrames = 0;
+            this.stopTransport();
+            return;
+        }
+
+        this.stepFrames = stepFrames;
+        if (!this.totalSteps) return;
 
         this.epochFrame = epochFrame;
         const steps = Math.floor((currentFrame - epochFrame) / this.stepFrames);

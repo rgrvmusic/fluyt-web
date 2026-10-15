@@ -12,9 +12,13 @@
 // engine in the position each part actually takes - the bass line on the bass part, the drum kit on
 // the drum part - so what it measures is the tune and not a synthetic note.
 //
+// Every tune in TUNES is run through, each against its own file, tempo and grid, and each with its
+// own trim bound: two tunes are two things the page plays, never at once, so neither can be the
+// other's worst case. The engines are loaded once and the tunes go through what is already there.
+//
 // It imports src/js/pattern.js, src/js/smf.js and src/js/tune.js, which are the files the page itself
-// loads, and it renders the MIDI file the page plays rather than the notation - so what is rendered is
-// the tune as the page has it, tempo and grid included, and a mistake in the file fails here rather
+// loads, and it renders the MIDI files the page plays rather than the notation - so what is rendered
+// is each tune as the page has it, tempo and grid included, and a mistake in a file fails here rather
 // than in a browser.
 
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
@@ -23,9 +27,9 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 
 import { parsePart, stepCount, noteToMidi, midiToNote } from '../src/js/pattern.js';
-import {
-    BPM, STEPS_PER_BAR, BARS, PARTS, TUNE_FILE, DEFAULT_ENGINES, compileMidi, presetForRole,
-} from '../src/js/tune.js';
+import { TUNES } from '../src/js/tunes/index.js';
+import { LAYOUT, presetForRole } from '../src/js/parts.js';
+import { compileMidi } from '../src/js/tune.js';
 import { MASTER_GAIN } from '../src/js/mix.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -152,103 +156,92 @@ function writeWav(channels, sampleRate) {
     return buffer;
 }
 
-async function main() {
-    console.log('========================================');
-    console.log('Fluyt tune - the whole thing, on every engine');
-    console.log('========================================');
-
-    // ---- the notation, before anything is loaded. These are the checks a browser cannot make:
-    // a note name that parses to nothing is a rest, and a rest is silent in a way that reads as a
-    // quiet part rather than as a mistake.
-    console.log('');
-    console.log('The notation:');
-
-    for (const part of PARTS) {
-        const steps = stepCount(part.text);
-        const expected = BARS * STEPS_PER_BAR;
+/**
+ * The notation, before anything is loaded. These are the checks a browser cannot make: a note name
+ * that parses to nothing is a rest, and a rest is silent in a way that reads as a quiet part rather
+ * than as a mistake.
+ */
+function checkNotation(notation) {
+    for (const part of LAYOUT) {
+        const text = notation.TEXT[part.id];
+        const steps = stepCount(text);
+        const expected = notation.BARS * notation.STEPS_PER_BAR;
         if (steps !== expected) {
-            fail(`${part.id}: ${steps} steps, and the tune claims ${BARS} x ${STEPS_PER_BAR} = ${expected}`);
+            fail(`${notation.ID}/${part.id}: ${steps} steps, and the tune claims ` +
+                 `${notation.BARS} x ${notation.STEPS_PER_BAR} = ${expected}`);
             continue;
         }
         try {
-            parsePart(part.text, part.id);
+            parsePart(text, part.id);
         } catch (err) {
             fail(String(err.message));
             continue;
         }
-        const notes = part.text.split(/\s+/).filter((t) => t !== '.' && t !== '-');
+        const notes = text.split(/\s+/).filter((t) => t !== '.' && t !== '-');
         const distinct = new Set(notes.flatMap((t) => t.split('+')));
         console.log(`  ${GREEN}✓${NC} ${part.id.padEnd(6)} ${steps} steps, ` +
                     `${notes.length} onsets, ${distinct.size} distinct notes (${[...distinct].sort().join(' ')})`);
     }
+}
 
-    // A note name that does not parse is the failure this notation is most likely to have, and
-    // parsePart throws on it - but only for the parts above. This is the same check for the names
-    // in the round, so that a name is known to round-trip.
-    try {
-        for (const name of ['C4', 'A1', 'F#3', 'Bb2', 'G9']) {
-            const midi = noteToMidi(name);
-            if (midi === null) throw new Error(`${name} does not parse`);
-            if (midiToNote(midi) !== name.replace('Bb', 'A#')) {
-                throw new Error(`${name} parsed to ${midi}, which reads back as ${midiToNote(midi)}`);
-            }
+/**
+ * One tune, end to end: the file the page reads, every engine on every part it could be put on, and
+ * the mix the page opens with.
+ *
+ * Every engine on every part, and not only the four the tune names, because that is what the page
+ * lets a visitor do - and it is what makes the master trim a bound for every combination rather than
+ * a number that happens to fit the tune as it opens.
+ */
+async function checkTune(notation, engines, loaded) {
+    console.log('');
+    console.log('='.repeat(40));
+    console.log(`${notation.LABEL}: the file, every engine, and the mix`);
+    console.log('='.repeat(40));
+
+    // ---- the engines it names have to exist. Nothing falls back any more - a slug that is not one
+    // of these is a part with no engine, which is silence rather than a wrong sound, and silence is
+    // the kind of thing a page does not explain.
+    let slugsOk = true;
+    for (const part of LAYOUT) {
+        const slug = notation.ENGINES[part.id];
+        if (!engines.some((engine) => engine.slug === slug)) {
+            fail(`${notation.ID}: ${part.id} is set to ${slug}, which is not one of the ` +
+                 `${engines.length} engines in dist/wasm/engines.json`);
+            slugsOk = false;
         }
-        if (noteToMidi('C4') !== 60) throw new Error('C4 is not 60 - the DRUM engine\'s note numbers would move');
-        // a bare number is how the drum part is written, so it is a MIDI note and must round-trip
-        // as one: 36 is the kick in General MIDI, and the DRUM engine maps 35..81 onto its kit
-        if (noteToMidi('36') !== 36) throw new Error('36 is not MIDI 36 - the drum part would move');
-        if (noteToMidi('128') !== null || noteToMidi('999') !== null) throw new Error('a number over 127 parsed');
-        console.log(`  ${GREEN}✓${NC} names      C4 is 60, accidentals round-trip, and 36 is MIDI 36 (the kick)`);
-    } catch (err) {
-        fail(`note names: ${err.message}`);
+    }
+    if (slugsOk) {
+        console.log(`  ${GREEN}✓${NC} engines   ${LAYOUT.map((p) => notation.ENGINES[p.id]).join(', ')}`);
     }
 
-    // ---- the tune, as the page has it: src/tune/fluyt-tune.mid, read by src/js/smf.js - the same
-    // file and the same reader the browser uses, so the tempo and the grid rendered here are the
-    // ones the page plays at rather than the notation's claim about them
+    // ---- the tune as the page has it: the file in src/tune/, read by src/js/smf.js - the same file
+    // and the same reader the browser uses, so the tempo and the grid rendered here are the ones the
+    // page plays at rather than the notation's claim about them
+    const target = fileURLToPath(notation.SONG_URL);
     let song;
     try {
-        song = compileMidi(new Uint8Array(await readFile(path.join(ROOT, 'src', TUNE_FILE))));
+        song = compileMidi(new Uint8Array(await readFile(target)));
     } catch (err) {
-        fail(`src/${TUNE_FILE}: ${err.message}`);
-        return report();
+        fail(`src/${path.relative(path.join(ROOT, 'src'), target)}: ${err.message}`);
+        return;
     }
     const compiled = song.parts;
 
-    // ---- every engine, on every part it could be put on. The page lets a visitor do exactly this,
-    // so the check is every combination and not only the default four.
-    const engines = JSON.parse(await readFile(path.join(WASM_DIR, 'engines.json'), 'utf8'));
     const stepFrames = (SAMPLE_RATE * 60) / (song.bpm * (song.stepsPerBar / 4));
     const loopFrames = Math.round(compiled[0].steps * stepFrames);
 
     console.log('');
-    console.log(`The tune: ${song.bars} bars of ${song.grid} at ${song.bpm.toFixed(2)} BPM, ` +
+    console.log(`${song.bars} bars of ${song.grid} at ${song.bpm.toFixed(2)} BPM, ` +
                 `${(loopFrames / SAMPLE_RATE).toFixed(1)} s, ` +
                 `${compiled[0].steps} steps of ${stepFrames.toFixed(1)} frames`);
     console.log('');
 
-    const mixed = { bass: null, lead: null, pad: null, drums: null };
+    const mixed = {};
     // the loudest this part reaches over every engine, which is what the master trim is sized against
     const loudest = new Map();
-    const wavDir = path.join(ROOT, 'build', 'tunecheck');
-
-    // The default assignment, mixed down, is what the page plays when it opens - so it is the one
-    // that gets written out as a file to listen to.
-    const modules = new Map();
 
     for (const engine of engines) {
-        const jsPath = path.join(WASM_DIR, engine.module);
-        const mod = await loadModule(
-            await readFile(jsPath, 'utf8'),
-            await readFile(path.join(WASM_DIR, engine.module.replace(/\.js$/, '.wasm'))),
-            jsPath,
-        );
-        modules.set(engine.slug, mod);
-
-        const handle = mod._regroove_synth_create(0, SAMPLE_RATE);
-        const count = mod._regroove_synth_get_preset_count();
-        const names = [];
-        for (let i = 0; i < count; i++) names.push(mod.UTF8ToString(mod._regroove_synth_get_preset_name(i)));
+        const { mod, handle, names } = loaded.get(engine.slug);
 
         console.log(`${YELLOW}${engine.name}${NC}`);
 
@@ -260,11 +253,13 @@ async function main() {
             const audio = await renderPart(mod, handle, part, stepFrames, loopFrames);
             const m = measure(audio);
 
-            const isDefault = DEFAULT_ENGINES[part.id] === engine.slug;
+            const isDefault = notation.ENGINES[part.id] === engine.slug;
             const mark = isDefault ? '*' : ' ';
 
-            if (m.bad) fail(`${engine.name} on ${part.id}: ${m.bad} non-finite samples`);
-            if (m.peak === 0) fail(`${engine.name} on ${part.id} (${names[preset]}): rendered silence`);
+            if (m.bad) fail(`${notation.ID}/${engine.name} on ${part.id}: ${m.bad} non-finite samples`);
+            if (m.peak === 0) {
+                fail(`${notation.ID}/${engine.name} on ${part.id} (${names[preset]}): rendered silence`);
+            }
 
             console.log(`  ${mark} ${part.id.padEnd(6)} ${names[preset].padEnd(11)} ` +
                         `peak ${m.peak.toFixed(3)}  rms ${m.rms.toFixed(4)}`);
@@ -284,7 +279,8 @@ async function main() {
     // the nine engines on any of the four parts, so the number to prove is the worst case reachable
     // by any combination: the sum over the parts of the loudest peak each part reaches. Parts do
     // not all peak on the same sample, so that sum is an upper bound rather than a prediction -
-    // which is exactly what makes it a bound for every combination and not just the loud ones.
+    // which is exactly what makes it a bound for every combination and not just the loud ones. It is
+    // a bound per tune, not across them: two tunes are two things the page plays, never at once.
     console.log('');
     console.log('The mix:');
 
@@ -292,9 +288,10 @@ async function main() {
     const trimmed = bound * MASTER_GAIN;
 
     if (trimmed > 1.0) {
-        fail(`the master gain of ${MASTER_GAIN} is too high: the worst case is ` +
-             `${bound.toFixed(3)} x ${MASTER_GAIN} = ${trimmed.toFixed(3)}, over full scale. ` +
-             'Lower MASTER_GAIN in src/js/mix.js, or move a preset that got louder.');
+        fail(`${notation.ID}: the master gain of ${MASTER_GAIN} is too high: the worst case is ` +
+             `${compiled.map((p) => (loudest.get(p.id) ?? 0).toFixed(3)).join(' + ')} = ` +
+             `${bound.toFixed(3)}, so ${trimmed.toFixed(3)} of full scale. Lower MASTER_GAIN in ` +
+             'src/js/mix.js, or move a preset that got louder.');
     } else {
         console.log(`  ${GREEN}✓${NC} trim ${MASTER_GAIN}  worst case ` +
                     `${compiled.map((p) => (loudest.get(p.id) ?? 0).toFixed(3)).join(' + ')} = ` +
@@ -308,7 +305,8 @@ async function main() {
     for (const part of compiled) {
         const audio = mixed[part.id];
         if (!audio) {
-            fail(`no default engine for ${part.id}`);
+            fail(`${notation.ID}: no engine for ${part.id} - it is set to ` +
+                 `${notation.ENGINES[part.id]}, and nothing was rendered for it`);
             continue;
         }
         for (let i = 0; i < loopFrames; i++) {
@@ -323,22 +321,81 @@ async function main() {
     }
 
     const mix = measure(interleave(left, right));
-    if (mix.bad) fail(`the mix has ${mix.bad} non-finite samples`);
-    console.log(`  ${GREEN}✓${NC} the tune the page opens with: peak ${mix.peak.toFixed(3)}  ` +
+    if (mix.bad) fail(`${notation.ID}: the mix has ${mix.bad} non-finite samples`);
+    console.log(`  ${GREEN}✓${NC} the tune as the page opens it: peak ${mix.peak.toFixed(3)}  ` +
                 `rms ${mix.rms.toFixed(4)}  (${(20 * Math.log10(mix.peak)).toFixed(1)} dBFS peak)`);
 
     try {
         await mkdir(wavDir, { recursive: true });
-        const wav = path.join(wavDir, 'fluyt-tune.wav');
+        const wav = path.join(wavDir, `fluyt-${notation.ID}.wav`);
         await writeFile(wav, writeWav([left, right], SAMPLE_RATE));
         console.log(`  ${GREEN}✓${NC} wrote ${path.relative(ROOT, wav)} - ` +
-                    'the tune as the page opens, trimmed as the page trims it, to listen to');
+                    'the tune as the page opens it, trimmed as the page trims it, to listen to');
     } catch (err) {
         // not a failure: writing a file is a convenience, not a check
         console.log(`  ${YELLOW}!${NC} could not write the wav: ${err.message}`);
     }
+}
 
-    for (const mod of modules.values()) mod._regroove_synth_destroy(0);
+const wavDir = path.join(ROOT, 'build', 'tunecheck');
+
+async function main() {
+    console.log('========================================');
+    console.log('Fluyt tunes - the whole thing, on every engine');
+    console.log('========================================');
+
+    for (const notation of TUNES) {
+        console.log('');
+        console.log(`${notation.LABEL} - the notation:`);
+        checkNotation(notation);
+    }
+
+    // A note name that does not parse is the failure this notation is most likely to have, and
+    // parsePart throws on it - but only for the parts above. This is the same check for the names in
+    // the round, so that a name is known to round-trip.
+    try {
+        for (const name of ['C4', 'A1', 'F#3', 'Bb2', 'G9']) {
+            const midi = noteToMidi(name);
+            if (midi === null) throw new Error(`${name} does not parse`);
+            if (midiToNote(midi) !== name.replace('Bb', 'A#')) {
+                throw new Error(`${name} parsed to ${midi}, which reads back as ${midiToNote(midi)}`);
+            }
+        }
+        if (noteToMidi('C4') !== 60) throw new Error('C4 is not 60 - the DRUM engine\'s note numbers would move');
+        // a bare number is how the drum part is written, so it is a MIDI note and must round-trip
+        // as one: 36 is the kick in General MIDI, and the DRUM engine maps 35..81 onto its kit
+        if (noteToMidi('36') !== 36) throw new Error('36 is not MIDI 36 - the drum part would move');
+        if (noteToMidi('128') !== null || noteToMidi('999') !== null) throw new Error('a number over 127 parsed');
+        console.log(`  ${GREEN}✓${NC} names      C4 is 60, accidentals round-trip, and 36 is MIDI 36 (the kick)`);
+    } catch (err) {
+        fail(`note names: ${err.message}`);
+    }
+
+    // ---- every engine, loaded once, and then put on every part of every tune. The modules are the
+    // expensive part of this check and a module does not care which tune is playing through it, so
+    // they are loaded here and the tunes run through what is already in memory.
+    const engines = JSON.parse(await readFile(path.join(WASM_DIR, 'engines.json'), 'utf8'));
+    const loaded = new Map();
+
+    for (const engine of engines) {
+        const jsPath = path.join(WASM_DIR, engine.module);
+        const mod = await loadModule(
+            await readFile(jsPath, 'utf8'),
+            await readFile(path.join(WASM_DIR, engine.module.replace(/\.js$/, '.wasm'))),
+            jsPath,
+        );
+
+        const handle = mod._regroove_synth_create(0, SAMPLE_RATE);
+        const count = mod._regroove_synth_get_preset_count();
+        const names = [];
+        for (let i = 0; i < count; i++) names.push(mod.UTF8ToString(mod._regroove_synth_get_preset_name(i)));
+
+        loaded.set(engine.slug, { mod, handle, names });
+    }
+
+    for (const notation of TUNES) await checkTune(notation, engines, loaded);
+
+    for (const { mod, handle } of loaded.values()) mod._regroove_synth_destroy(handle);
 
     report();
 }

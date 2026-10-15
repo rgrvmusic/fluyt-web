@@ -3,13 +3,15 @@
 // Fluyt web - the browser preview of Felucca's engines as Fluyt units.
 // Copyright (C) 2026 Gerard Braad (Regroove | RGRV).
 //
-// Read the tune back. Run with `make check`, or `node tools/midicheck.mjs`.
+// Read the tunes back. Run with `make check`, or `node tools/midicheck.mjs`.
 //
-// The page no longer plays the notation in src/js/tune.js: it plays src/tune/fluyt-tune.mid, through
-// src/js/smf.js. That is one more thing between the tune and the engines, and it is the kind of thing
+// The page does not play the notation in src/js/tunes/: it plays the files in src/tune/, through
+// src/js/smf.js. That is one more thing between a tune and the engines, and it is the kind of thing
 // that fails quietly - a reader that loses the last note of a bar, or moves a note by a step, still
-// produces a tune, just not this one. So the file is read here by the same parser the page loads, and
-// what comes back is compared to the notation it was written from, note for note and step for step.
+// produces a tune, just not this one. So every file is read here by the same parser the page loads,
+// and what comes back is compared to the notation it was written from, note for note and step for
+// step. Every tune in TUNES is checked, and each against its own facts: the tempo, the grid and the
+// number of bars are the tune's, and two tunes need not agree about any of them.
 //
 // The rest of the file is about the reader's own decisions, which nothing else checks:
 //
@@ -22,7 +24,7 @@
 //     "reports itself" is the checked claim.
 //
 // The fixtures are built by tools/midifile.mjs, which is the writer the notation goes through, so the
-// reader is being tested against files made by the code that made the file it actually plays.
+// reader is being tested against files made by the code that made the files it actually plays.
 
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -30,10 +32,11 @@ import path from 'node:path';
 
 import { buildMidi, noteEvents } from './midifile.mjs';
 import { buildTuneMidi, partEvents, CHANNELS } from './tune-to-mid.mjs';
-import { BPM, STEPS_PER_BAR, BARS, PARTS, TUNE_FILE, compileTune, compileMidi } from '../src/js/tune.js';
+import { TUNES } from '../src/js/tunes/index.js';
+import { LAYOUT } from '../src/js/parts.js';
+import { compileTune, compileMidi } from '../src/js/tune.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const TARGET = path.join(ROOT, 'src', TUNE_FILE);
 
 // The same division tools/tune-to-mid.mjs writes at: 480 to the quarter, so a sixteenth is 120 ticks
 // and every one of the six grids divides it exactly.
@@ -115,31 +118,54 @@ function sameParts(song, expected, label) {
     }
 }
 
+/**
+ * The notes a part leaves sounding at the end of the pass: everything its ons open and nothing
+ * closes. The wrap entry is where the page releases them, one step past the last step - and the loop
+ * point is where that has to be right, because a note still held when the pattern comes round would
+ * either hang across the repeat or never retrigger.
+ */
+function leftSounding(part) {
+    const sounding = new Set();
+    for (let step = 0; step < part.steps; step++) {
+        for (const note of part.off[step] || []) sounding.delete(note);
+        for (const note of part.on[step] || []) sounding.add(note);
+    }
+    return [...sounding].sort((a, b) => a - b);
+}
+
+/** The same list, sorted, so two of them can be compared as text. */
+const notes = (list) => [...list].sort((a, b) => a - b).join(',');
+
 // --------------------------------------------------------------------------------- the check
 
-async function main() {
-    // ---- 1. the tune: the notation, the file, and what the page reads back
-    console.log('The tune - the notation, the file, and what the page reads back:');
+/** One tune: its notation, its file, and what the page reads back out of it. */
+async function checkTune(notation) {
+    const target = fileURLToPath(notation.SONG_URL);
+    const named = `src/${path.relative(path.join(ROOT, 'src'), target)}`;
 
-    const notation = compileTune();
-    const committed = new Uint8Array(await readFile(TARGET));
-    const written = buildTuneMidi();
+    console.log('');
+    console.log(`${notation.LABEL} - the notation, the file, and what the page reads back:`);
+
+    const compiled = compileTune(notation);
+    const committed = new Uint8Array(await readFile(target));
+    const written = buildTuneMidi(notation);
 
     const same = committed.length === written.length &&
                  committed.every((byte, i) => byte === written[i]);
-    check(`src/${TUNE_FILE} is what the notation says (${committed.length} bytes)`, same,
-          `${committed.length} bytes committed, ${written.length} written from src/js/tune.js - ` +
-          'run: node tools/tune-to-mid.mjs');
+    check(`${named} is what the notation says (${committed.length} bytes)`, same,
+          `${committed.length} bytes committed, ${written.length} written from ` +
+          `src/js/tunes/${notation.ID}.js - run: node tools/tune-to-mid.mjs`);
 
     const song = compileMidi(committed);
 
-    check(`the file reads back as ${BARS} bars of ${STEPS_PER_BAR} - ${song.steps} steps`,
-          song.steps === BARS * STEPS_PER_BAR && song.bars === BARS,
+    check(`the file reads back as ${notation.BARS} bars of ${notation.STEPS_PER_BAR} - ` +
+          `${song.steps} steps`,
+          song.steps === notation.BARS * notation.STEPS_PER_BAR && song.bars === notation.BARS,
           `${song.steps} steps, ${song.bars} bars`);
-    check(`at ${BPM} BPM, from the file's own tempo`, Math.abs(song.bpm - BPM) < 0.001,
+    check(`at ${notation.BPM} BPM, from the file's own tempo`, Math.abs(song.bpm - notation.BPM) < 0.001,
           `${song.bpm} BPM`);
-    check('on sixteenths, and nothing had to be moved',
-          song.stepsPerBar === STEPS_PER_BAR && song.grid === 'sixteenths' && song.snapped === 0,
+    check(`on ${notation.STEPS_PER_BAR} to the bar, and nothing had to be moved`,
+          song.stepsPerBar === notation.STEPS_PER_BAR && song.snapped === 0,
           `${song.grid} (${song.stepsPerBar} to the bar), ${song.snapped} notes moved`);
     check('no note dropped, none held past the end, no track that had nowhere to go',
           song.dropped === 0 && song.unmapped === 0 && song.parts.every((p) => p.held === 0),
@@ -147,16 +173,41 @@ async function main() {
           `${song.parts.reduce((n, p) => n + p.held, 0)} held at the end`);
     check('one tempo in it, which is what the transport assumes', song.tempoChanges === 0);
 
-    sameParts(song, notation, 'the tune');
+    sameParts(song, compiled, notation.ID);
 
-    // The wrap entry is the one the loop point turns on - the notes a pass leaves sounding, released
-    // as the next pass begins - so it is worth naming: the pad's chord is held to the last step.
-    const pad = song.parts.find((p) => p.id === 'pad');
-    const wrap = pad.off[pad.steps];
-    const lastChord = pad.on[pad.steps - STEPS_PER_BAR];
-    check(`the pad's chord is released on the wrap entry, step ${pad.steps}: [${wrap}]`,
-          wrap.length === 3 && wrap.join(',') === lastChord.join(','),
-          `[${wrap}] against the chord the last bar opened, [${lastChord}]`);
+    // The wrap entry is the one the loop point turns on, so it is worth naming for every part rather
+    // than for the one part whose line makes it obvious: whatever a pass leaves sounding - a chord,
+    // a note written with no end, nothing at all - is released on step `steps`, not on step 0.
+    for (const part of song.parts) {
+        const left = notes(leftSounding(part));
+        const wrap = notes(part.off[part.steps] || []);
+        check(`${part.id} is released on the wrap entry, step ${part.steps}: [${wrap}]`,
+              left === wrap,
+              `[${wrap}] released there, and the pass leaves [${left}] sounding`);
+    }
+
+    // ---- format 0: one track, the parts told apart by channel
+    //
+    // The same tune, flattened into the one track a phone app exports - so the four parts have to be
+    // recovered from the channels alone, and come back as the same four.
+    const merged = [];
+    compiled.forEach((part, index) => merged.push(...partEvents(part, CHANNELS[index],
+        DIVISION * 4 / notation.STEPS_PER_BAR)));
+    const flat = compileMidi(file([{ name: notation.LABEL, events: merged }],
+        { format: 0, bpm: notation.BPM }));
+
+    check('the same four parts in one track, mapped by channel rather than by name',
+          flat.steps === song.steps && flat.stepsPerBar === song.stepsPerBar &&
+          Math.abs(flat.bpm - song.bpm) < 0.001,
+          `${flat.steps} steps, ${flat.grid} (${flat.stepsPerBar} to the bar), ` +
+          `${flat.bpm.toFixed(3)} BPM - and the four-track version is ${song.steps}, ` +
+          `${song.grid}, ${song.bpm.toFixed(3)} BPM`);
+    sameParts(flat, compiled, `${notation.ID} flattened`);
+}
+
+async function main() {
+    // ---- 1. the tunes: each notation, its file, and what the page reads back
+    for (const notation of TUNES) await checkTune(notation);
 
     // ---- 2. the grid: the coarsest that divides the file, and no coarser
     console.log('');
@@ -184,25 +235,9 @@ async function main() {
           `${off.grid} (${off.stepsPerBar} to the bar), ${off.snapped} moved, ` +
           `the furthest by ${off.worst} ticks`);
 
-    // ---- 3. format 0: one track, the parts told apart by channel
+    // ---- 3. the awkward files
     console.log('');
-    console.log('Format 0 - one track, four channels, which is what a phone app exports:');
-
-    const merged = [];
-    compileTune().forEach((part, index) => merged.push(...partEvents(part, CHANNELS[index])));
-    const flat = compileMidi(file([{ name: 'Fluyt tune', events: merged }], { format: 0, bpm: BPM }));
-
-    check('the same four parts, mapped by channel rather than by track',
-          flat.steps === song.steps && flat.stepsPerBar === song.stepsPerBar &&
-          Math.abs(flat.bpm - song.bpm) < 0.001,
-          `${flat.steps} steps, ${flat.grid} (${flat.stepsPerBar} to the bar), ` +
-          `${flat.bpm.toFixed(3)} BPM - and the four-track version is ${song.steps}, ` +
-          `${song.grid}, ${song.bpm.toFixed(3)} BPM`);
-    sameParts(flat, notation, 'format 0');
-
-    // ---- 4. the awkward files
-    console.log('');
-    console.log('The files that are not the tune - a note with no end, an off with no on:');
+    console.log('The files that are not a tune here - a note with no end, an off with no on:');
 
     const held = compileMidi(file([track('Bass', [{ note: 60, start: 0, end: null }])]));
     const heldPart = held.parts.find((p) => p.id === 'bass');
@@ -244,7 +279,7 @@ async function main() {
     const crowded = compileMidi(file([{ name: 'Five', events: extra.flatMap((t) => t.events) }],
         { format: 0 }));
     check('a file with more parts than the page has plays the four it can and counts the rest',
-          crowded.parts.length === PARTS.length && crowded.unmapped === 1,
+          crowded.parts.length === LAYOUT.length && crowded.unmapped === 1,
           `${crowded.parts.length} parts, ${crowded.unmapped} notes with nowhere to go`);
 
     // A tune that is not a whole number of bars is padded to one, so the loop is a length the
@@ -259,7 +294,7 @@ async function main() {
         console.log(`${RED}${failures.length} failure${failures.length === 1 ? '' : 's'}${NC}`);
         process.exit(1);
     }
-    console.log(`${GREEN}the file the page plays is the notation's, and it reads back as the tune${NC}`);
+    console.log(`${GREEN}every file the page plays is its notation's, and reads back as the tune${NC}`);
     process.exit(0);
 }
 

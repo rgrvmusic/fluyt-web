@@ -2,216 +2,98 @@
 // Fluyt web - the browser preview of Felucca's engines as Fluyt units.
 // Copyright (C) 2026 Gerard Braad (Regroove | RGRV).
 //
-// The preview tune: eight bars in A minor at 112 BPM, four parts, written in the notation
-// src/js/pattern.js documents.
+// A tune, from the two places it comes from: the notation a tune is written in, and the MIDI file
+// the page plays.
 //
-// It is an original tune, written for this page. The shape is a sea shanty's - a call answered by a
-// response, a bass that pushes on the beat, a harmony in fifths - because the page this plays on is
-// a Fluyt page and a Fluyt is a ship. It is not a quotation of any shanty: not "Drunken Sailor",
-// not any other, so there is nothing here to attribute and nothing to clear.
+// The page reads a file, not a notation. Every tune here is written both ways on purpose, paid for
+// with what each is good at: the notation is a bar a line and can be read, edited and reviewed in
+// src/js/tunes/, and the file is what a DAW opens and what the page actually parses. Neither is a
+// second implementation of the tune - the file is generated from the notation by
+// tools/tune-to-mid.mjs, and `make midicheck` fails if the two are not the same tune - so a note
+// added to a notation and not written out is a build failure rather than a page quietly playing last
+// week's tune.
 //
-// Four parts, and each is a thing a visitor can hear an engine do:
+// This module is the middle of that: it holds the two directions and nothing about any one tune.
+// What a tune *is* lives in src/js/tunes/, what the parts are lives in src/js/parts.js, and this is
+// where the two meet.
 //
-//   bass   root notes, eighth notes, on the beat       - the engine's low end and its punch
-//   lead   the tune                                    - pitch, glide and brightness
-//   pad    one sustained chord a bar                   - polyphony, and how it decays
-//   drums  kick, snare and hats, General MIDI numbered - the DRUM engine's own kit
+//   compileTune(notation)   the notation, as the parts the page plays
+//   compileMidi(bytes)      a MIDI file, as the same - the page's own path, for any file
+//   loadTune(id)            a bundled tune, fetched and compiled
 //
-// The lead is written out bar by bar because it is the line most likely to be edited, and reading
-// it a bar at a time is the point. The mechanical parts are built from two one-line helpers; a
-// helper is still a string of tokens, so replacing one with a literal changes nothing but the
-// reading, and the notation is the same in both.
-//
-// ---------------------------------------------------------------------------------------------
-// This file is the tune's source. The page reads a MIDI file.
-//
-// What plays is src/tune/fluyt-tune.mid: four tracks of Standard MIDI File, read by src/js/smf.js
-// when the page opens, so that a tune reaches the engines by the same path any other MIDI file
-// would. The notation above is where that file is written from, by tools/tune-to-mid.mjs, and
-// `make check` fails if the two are not the same tune - so a note added here and not written out is
-// a build failure rather than a page quietly playing last week's tune.
-//
-// Keeping both is a deliberate cost, paid for what each is good at: the notation is a bar a line and
-// can be read, edited and reviewed here, and the file is what a DAW opens and what the page actually
-// parses. Neither is a second implementation of the tune - the file is generated from this and
-// checked against it - which is the only way two representations of one thing are worth having.
+// The last of those is every file a visitor brings too, through compileMidi: a loaded file is not a
+// second kind of thing, it is a tune whose notation nobody kept.
 
+import { LAYOUT } from './parts.js';
 import { parsePart, stepCount } from './pattern.js';
 import { parseMidi, partsFromMidi } from './smf.js';
+import { DEFAULT_TUNE_ID, tuneById } from './tunes/index.js';
 
-export const BPM = 112;
-export const STEPS_PER_BAR = 16;          // sixteenth notes in 4/4, so one step is a sixteenth
-export const BARS = 8;
+export { DEFAULT_TUNE_ID };
 
-// The tune the page plays, relative to src/ - so both sides of the tree can find it: the page asks
-// the browser for it, and the Node tools read the same path. One fact, two readers.
-export const TUNE_FILE = 'tune/fluyt-tune.mid';
+/**
+ * A tune's notation, as the parts the page plays: each with its on/off arrays, its id, its label and
+ * its role.
+ *
+ * `notation` is a module out of src/js/tunes/. The length check is the one this notation makes
+ * easiest to get wrong - a bar of seventeen tokens, or a bar that is missing - and it is checked
+ * against that tune's own bars and grid rather than against a constant, because there is no one grid
+ * here any more: a tune in triplets is 12 or 24 to the bar and is as correct as this one.
+ *
+ * The two key checks are the other half of it. A part with no line in TEXT is a part that is silently
+ * silent - the page would build it, play it, and never say why nothing came out - and a key in TEXT
+ * that is not a part is a line nobody plays and that no check downstream would ever inventory. Both
+ * are failures here rather than a tune that is merely smaller than it reads.
+ */
+export function compileTune(notation) {
+    const expected = notation.BARS * notation.STEPS_PER_BAR;
 
-// one bar of an eighth-note pulse on one note: eight notes, each a sixteenth of sound and a
-// sixteenth of rest. This is what a shanty bass does - it pushes, it does not sustain.
-const pulse = (note) =>
-    `${note} . ${note} . ${note} . ${note} . ${note} . ${note} . ${note} . ${note} .`;
-
-// The drums are written as General MIDI numbers rather than note names, because the numbers are
-// what the DRUM engine reads - it maps 35..81 straight onto its kit - and because a drum part in
-// note names is a transliteration nobody can read. The map the lines below use:
-//
-//   36 kick   38 snare   39 clap   42 closed hat   46 open hat
-//
-// (The engine's own map is in felucca/firmware/src/eng_drum.c; 36..47 also play as those numbers'
-// octave, so a GM file pasted in here keeps its meaning.)
-//
-// One bar of a backbeat: kick and hat on 1, hat on the and, snare and hat on 2, and so on.
-const BACKBEAT = '36+42 . 42 . 38+42 . 42 . 36+42 . 42 . 38+42 . 46 .';
-
-// the last bar of the loop: the same as BACKBEAT except for its fourth beat, where the hats give
-// way to a snare and a clap so the repeat does not arrive unannounced. Sixteen tokens, like every
-// other bar - a bar of seventeen is the mistake this notation makes easiest, which is why
-// compileTune() counts.
-const FILL = '36+42 . 42 . 38+42 . 42 . 36+42 . 42 . 38+39 . 39+36 .';
-
-// The harmony: A minor, F, G, A minor, twice. Four of the eight bars are the tonic because that is
-// what makes a shanty sound like it is going somewhere and coming back.
-const CHORDS = ['A2+C3+E3', 'F2+A2+C3', 'G2+B2+D3', 'A2+C3+E3'];
-const ROOTS = ['A1', 'F1', 'G1', 'A1'];
-
-// The tune, eight bars. The first four are the call - it rises to the fourth and comes back down to
-// the tonic. The second four are the answer: the same shape an octave's reach higher, then a long
-// tonic to land on. Each string is one bar of sixteen steps, and both begin on the beat the way a
-// shanty line does.
-const LEAD_CALL = [
-    'A3 . C4 . E4 - . . D4 . C4 . A3 - . .',
-    'F4 - . . E4 . C4 . A3 - . . . . . .',
-    'G3 . B3 . D4 - . . E4 - . . . . . .',
-    'E4 . C4 . A3 - . . A3 - . . . . . .',
-];
-
-const LEAD_ANSWER = [
-    'A3 . C4 . E4 - . . A4 - . . G4 . E4 .',
-    'F4 - . . E4 . D4 . C4 - . . . . . .',
-    'D4 . E4 . D4 . B3 . G3 - . . . . . .',
-    'A3 - - - . . . . . . . . . . . .',
-];
-
-// Held for the whole bar: one token of notes, fifteen of hold. The pad is where an engine's
-// polyphony and its release are heard, so it is deliberately the simplest line here.
-const chordBar = (chord) => `${chord} ${'- '.repeat(15)}`.trim();
-
-const lead = [...LEAD_CALL, ...LEAD_ANSWER].join(' ');
-
-// The bass walks down to the fifth in the last bar, which is the one thing keeping eight bars of
-// root notes from being eight bars of root notes. Written out rather than derived from pulse(),
-// because it is the bar that differs and reading it as a line is the point.
-const bassBars = [
-    pulse('A1'), pulse('F1'), pulse('G1'), pulse('A1'),
-    pulse('A1'), pulse('F1'), pulse('G1'), 'A1 . A1 . A1 . A1 . A1 . A1 . E1 . A1 .',
-];
-
-// The chords run twice, so the pad is the harmony above and the tune is the line across it.
-const padBars = [...CHORDS, ...CHORDS].map(chordBar);
-
-// The seven backbeats and the fill.
-const drumBars = [...Array(7).fill(BACKBEAT), FILL];
-
-export const PARTS = [
-    {
-        id: 'bass',
-        label: 'Bass',
-        // the role is what src/js/fluyt.js picks a preset by, since a preset index means nothing
-        // across engines and means less across a rebuild
-        role: 'bass',
-        text: bassBars.join(' '),
-    },
-    {
-        id: 'lead',
-        label: 'Lead',
-        role: 'lead',
-        text: lead,
-    },
-    {
-        id: 'pad',
-        label: 'Pad',
-        role: 'pad',
-        text: padBars.join(' '),
-    },
-    {
-        id: 'drums',
-        label: 'Drums',
-        role: 'drum',
-        text: drumBars.join(' '),
-    },
-];
-
-// The engines a part starts on, by slug from dist/wasm/engines.json. These are the ones the parts
-// are written for: a bass on ANALOG, the tune on TRIO, the chords on PHASE and the kit on DRUM.
-export const DEFAULT_ENGINES = {
-    bass: 'analog',
-    lead: 'trio',
-    pad: 'phase',
-    drums: 'drum',
-};
-
-const EXPECTED_STEPS = BARS * STEPS_PER_BAR;
-
-/** The parsed parts, each with its on/off arrays. Throws if a part is not the length it claims. */
-export function compileTune(parts = PARTS) {
-    return parts.map((part) => {
-        const steps = stepCount(part.text);
-        if (steps !== EXPECTED_STEPS) {
-            throw new Error(
-                `tune: ${part.id} is ${steps} steps, and the tune is ${BARS} bars of ` +
-                `${STEPS_PER_BAR} - which is ${EXPECTED_STEPS}`);
+    for (const part of LAYOUT) {
+        if (!(part.id in notation.TEXT)) {
+            throw new Error(`tune: ${notation.ID} has no ${part.id} - every tune writes all ` +
+                            `${LAYOUT.length} parts (${LAYOUT.map((p) => p.id).join(', ')})`);
         }
-        const parsed = parsePart(part.text, part.id);
-        return { ...part, ...parsed };
+        if (!notation.ENGINES[part.id]) {
+            throw new Error(`tune: ${notation.ID} gives no engine to ${part.id}`);
+        }
+    }
+    for (const id of Object.keys(notation.TEXT)) {
+        if (!LAYOUT.some((part) => part.id === id)) {
+            throw new Error(`tune: ${notation.ID} writes a ${id}, and the page has no such part ` +
+                            `(${LAYOUT.map((p) => p.id).join(', ')})`);
+        }
+    }
+
+    return LAYOUT.map((part) => {
+        const steps = stepCount(notation.TEXT[part.id]);
+        if (steps !== expected) {
+            throw new Error(
+                `tune: ${notation.ID}'s ${part.id} is ${steps} steps, and the tune is ` +
+                `${notation.BARS} bars of ${notation.STEPS_PER_BAR} - which is ${expected}`);
+        }
+        return { ...part, ...parsePart(notation.TEXT[part.id], part.id) };
     });
 }
 
 /**
- * The tune as the page plays it: the MIDI file, read into the four parts.
+ * A MIDI file, as the page plays it. What comes back is the file's own facts - its tempo, which of
+ * the six grids it landed on, how many bars it is, and what the reader had to move or drop to get
+ * there - with the parts under `parts`.
  *
- * What comes back is not the notation's shape. It is the file's own facts - its tempo, which of the
- * six grids it landed on, how many bars it is - with the parts under `parts`, so the page takes its
- * step length from the music rather than from a constant that agrees with it today. `BPM` and
- * `STEPS_PER_BAR` above are the notation's, and belong to tools/tune-to-mid.mjs; a page that used
- * them would be playing the file at a tempo the file does not have.
- *
- * The parts' ids, labels and roles are still this file's (see PARTS): which four parts a tune has is
- * the page's business, and a track in the file is matched to one of them by name.
+ * The parts come from src/js/parts.js and not from the file: which four parts a tune has is the
+ * page's business, and a track is matched to one of them by name. A file with five tracks, or none,
+ * is a file this handles - see src/js/smf.js for what it does with what it cannot place.
  */
 export function compileMidi(bytes) {
-    return partsFromMidi(parseMidi(bytes), PARTS);
+    return partsFromMidi(parseMidi(bytes), LAYOUT);
 }
 
-/** The same, from the file - the page's one fetch before anything can play. */
-export async function loadTune() {
-    const res = await fetch(new URL(`../${TUNE_FILE}`, import.meta.url));
-    if (!res.ok) throw new Error(`${TUNE_FILE}: the browser answered ${res.status}`);
+/** A bundled tune, fetched and compiled. Throws for an id that is not a tune, or a file that is not there. */
+export async function loadTune(id = DEFAULT_TUNE_ID) {
+    const notation = tuneById(id);
+    if (!notation) throw new Error(`${id} is not one of the tunes the page has`);
+
+    const res = await fetch(notation.SONG_URL);
+    if (!res.ok) throw new Error(`${notation.FILE}: the browser answered ${res.status}`);
     return compileMidi(new Uint8Array(await res.arrayBuffer()));
-}
-
-/**
- * Which preset of a loaded engine a part should use.
- *
- * Preset indices are not comparable across engines - ANALOG's 3 is not TRIO's 3 - and they move
- * when an engine gains a preset, so nothing here is a number. The names come from the module at
- * runtime, so this cannot disagree with the firmware; and the list is ordered, so the first match
- * wins and the earlier patterns are the more literal ones. Falling back to 0 is not a mistake to
- * hide: an engine with nothing bass-like in it plays its first sound, which is what a preview of
- * that engine should do.
- */
-const ROLE_PATTERNS = {
-    bass: [/BASS/i, /SUB/i, /WOW/i],
-    lead: [/LEAD/i, /ACID/i, /PLUCK/i, /BELL/i, /WIRE/i, /RESO/i, /SOLO/i],
-    pad: [/PAD/i, /^STR/i, /STRING/i, /CHOIR/i, /ORGAN/i, /BRASS/i, /WIND/i, /RAIN/i],
-    drum: [/DRUM/i, /KIT/i, /PERC/i],
-};
-
-export function presetForRole(role, presetNames) {
-    const patterns = ROLE_PATTERNS[role] || [];
-    for (const pattern of patterns) {
-        const index = presetNames.findIndex((name) => pattern.test(name));
-        if (index >= 0) return index;
-    }
-    return 0;
 }

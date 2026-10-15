@@ -23,8 +23,8 @@
 //   * the size of every render block, which is the other half of the same question: the blocks in a
 //     quantum have to be exactly the 128 frames, with nothing skipped and nothing written twice.
 //
-// The step length is the tune's own - 6428.571... frames, not a whole number - and that is what
-// makes the timing worth measuring rather than assuming. Rounding it has a cost either way:
+// The step length is the default tune's own - 6428.571... frames, not a whole number - and that is
+// what makes the timing worth measuring rather than assuming. Rounding it has a cost either way:
 //
 //   * a scheduler that keeps a running position and adds the step to it drifts by however much was
 //     rounded away each time, and is 54.9 frames - nearly a whole step - out by the end of the tune
@@ -41,7 +41,9 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 
-import { TUNE_FILE, compileMidi, presetForRole } from '../src/js/tune.js';
+import { tuneById, DEFAULT_TUNE_ID } from '../src/js/tunes/index.js';
+import { compileMidi } from '../src/js/tune.js';
+import { presetForRole } from '../src/js/parts.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const WASM_DIR = path.join(ROOT, 'dist', 'wasm');
@@ -209,9 +211,10 @@ async function main() {
 
     const engines = JSON.parse(await readFile(path.join(WASM_DIR, 'engines.json'), 'utf8'));
     const engine = engines.find((e) => e.slug === 'analog') || engines[0];
-    // the file the page plays, read by the page's own reader: the pattern, the tempo and the grid
+    // the tune the page opens on, read by the page's own reader: the pattern, the tempo and the grid
     // measured here are the ones that go to the worklet, not a second copy of them
-    const song = compileMidi(new Uint8Array(await readFile(path.join(ROOT, 'src', TUNE_FILE))));
+    const song = compileMidi(new Uint8Array(await readFile(fileURLToPath(
+        tuneById(DEFAULT_TUNE_ID).SONG_URL))));
     const tune = song.parts;
     const bass = tune.find((p) => p.id === 'bass');
 
@@ -579,6 +582,57 @@ async function main() {
         } else {
             ok(`Play starts the part on step 0's own frame (${fromPlay[0].frame}, step at ` +
                `${startAt}), with ${beforePlay} notes before it`);
+        }
+    }
+
+    // ---- 8. a new tune handed to a part that is stopped
+    //
+    // Switching tunes while the page is stopped hands every part a new pattern and no transport,
+    // and the part it is handed to has played before - it still holds the step length of the tune
+    // it was playing. A worklet that kept that step length and armed itself against the epoch it
+    // was given (0) would start playing from wherever currentFrame had got to, firing every onset
+    // of the new tune between then and now on one frame. `joiner` is exactly that part: it has
+    // played the tune and been stopped.
+    console.log('');
+    console.log('A new tune handed to a part that is stopped:');
+
+    const lead = tune.find((p) => p.id === 'lead');
+    const swapMark = joinLog.events.length;
+
+    await joiner.port.deliver({
+        type: 'setPattern',
+        data: { on: lead.on, off: lead.off, stepFrames: 0, epochFrame: 0 },
+    });
+    run(joiner, joinLog, 400);
+
+    const silent = joinLog.events.slice(swapMark).filter((e) => e.kind === 'on' || e.kind === 'off');
+    if (silent.length) {
+        fail(`a pattern handed to a stopped part started it playing: ${silent.length} note ` +
+             `events with no transport sent`);
+    } else {
+        ok('a pattern handed to a stopped part is held and plays nothing');
+    }
+
+    // ...and Play then plays the tune that was swapped in, from that tune's own step 0
+    const restartAt = globalThis.currentFrame + QUANTUM * 2;
+    const restartMark = joinLog.events.length;
+    await joiner.port.deliver({ type: 'setTransport', data: { epochFrame: restartAt, stepFrames } });
+    run(joiner, joinLog, 60);
+
+    const restarted = joinLog.events.slice(restartMark).filter((e) => e.kind === 'on');
+    if (!restarted.length) {
+        fail('Play after a tune was swapped in started nothing');
+    } else if (!lead.on[0].includes(restarted[0].note)) {
+        fail(`Play after a tune was swapped in started note ${restarted[0].note}, which is not on ` +
+             `the new tune's step 0 (${lead.on[0].join(', ')}) - the old pattern is still armed`);
+    } else {
+        const error = restarted[0].frame - restartAt;
+        if (error < 0 || error >= 1) {
+            fail(`after a tune was swapped in the first note is at frame ${restarted[0].frame} and ` +
+                 `the new tune's step 0 is at ${restartAt} - ${error.toFixed(2)} frames out`);
+        } else {
+            ok(`Play starts the new tune on its own step 0 (frame ${restarted[0].frame}, step at ` +
+               `${restartAt})`);
         }
     }
 

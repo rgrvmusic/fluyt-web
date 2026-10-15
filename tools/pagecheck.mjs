@@ -7,11 +7,12 @@
 // a page asks the browser for exists, and that every element a script looks up by id is in the
 // markup. Run with `make check`, or `node tools/pagecheck.mjs`.
 //
-// smoke.mjs and tunecheck.mjs exercise the engines and the tune, and between them they load
-// src/js/pattern.js and src/js/tune.js and nothing else. Everything the page is built out of - the
-// player, the UI, the keyboard, the worklet, the two entry points - is never executed by either of
-// them, and a mistake in it does not fail anything: it shows up as a blank page in a browser, in
-// front of a visitor, on a page whose whole job is to look like it works.
+// smoke.mjs, tunecheck.mjs, swapcheck.mjs and songcheck.mjs exercise the engines, the tunes, the part
+// and the player, and between them they load src/js/pattern.js, tune.js, fluyt.js and player.js and
+// nothing else. Everything else the page is built out of - the UI, the keyboard, the worklet, the two
+// entry points - is never executed by any of them, and a mistake in it does not fail anything: it
+// shows up as a blank page in a browser, in front of a visitor, on a page whose whole job is to look
+// like it works.
 //
 // The three checks here are the ones worth having for that layer:
 //
@@ -214,11 +215,12 @@ const exists = async (p) => {
  * The urls a module builds for itself at runtime, as paths relative to that module.
  *
  * `new URL('../worklet/fluyt-worklet.js', import.meta.url)` is the form; the other is a url
- * assembled out of the module's own constants - `new URL(`../${TUNE_FILE}`, import.meta.url)` -
- * which is how a module asks for a file whose name it also publishes. Those constants are
+ * assembled out of the module's own constants - `new URL(`../../tune/${FILE}`, import.meta.url)`,
+ * which is how a tune asks for the file whose name it also publishes. Those constants are
  * substituted here, so what is checked is the file that is named rather than the shape of the
  * expression that names it. A name that is not one of the module's own string constants is left as
- * it was, and will simply not resolve.
+ * it was, and will simply not resolve - which is why a tune exports FILE as a single-quoted constant
+ * and builds its url out of it, rather than working the path out in a helper.
  */
 function runtimeUrls(text) {
     const values = new Map();

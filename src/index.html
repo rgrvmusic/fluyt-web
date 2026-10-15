@@ -4,19 +4,25 @@
      Copyright (C) 2026 Gerard Braad (Regroove | RGRV).
 
      The page that goes in the iframe on the itch.io page. Deliberately small: a Play button, a Random
-     button, and the four parts. No knob panel (a later enhancement), no keyboard, and nothing to
-     read that is not needed to press Play.
+     button, what is playing, and the four parts. No knob panel (a later enhancement), no keyboard, and
+     nothing to read that is not needed to press Play.
+
+     Two ways to change what plays: the picker, which offers the tunes in src/js/tunes/ and brings the
+     engines each was written for, and a file input, which takes any MIDI file a visitor has and keeps
+     the engines already on screen. Both are the browser's own controls and both are visible, because
+     a control nobody can find is a control nobody can use.
 
      It is a separate page from keyboard.html because a cross-origin iframe does not reliably get
      WebMIDI permission, and a page that offers an input selector it cannot use is worse than one
      that does not offer it. Everything shared between the two is shared: theme.css, the worklet,
-     and src/js/{fluyt,tune,pattern,player,ui}.js. -->
+     and src/js/{fluyt,parts,tune,pattern,player}.js. The controls are not - the picker and the file
+     input are this page's - so this page has ui.js where the audition page has audition-ui.js. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Fluyt demo - hear the engines</title>
-<meta name="description" content="A browser preview of Fluyt's nine sound engines for the KORG drumlogue, playing a short tune.">
+<meta name="description" content="A browser preview of Fluyt's nine sound engines for the KORG drumlogue, playing a tune - or a MIDI file of your own.">
 <link rel="stylesheet" href="css/theme.css">
 </head>
 <body>
@@ -25,6 +31,11 @@
     <button id="play" type="button">Play</button>
     <button id="random" class="secondary" type="button"
             title="Put a different engine across the bass, the lead and the chords">Random</button>
+    <!-- Both start disabled: they are wired once the engines and the first tune are loaded, and a
+         control that does nothing until then is worse than one that looks like it is waiting. -->
+    <label><span>Tune</span> <select id="tune" disabled></select></label>
+    <label><span>Load MIDI</span>
+        <input type="file" id="tune-file" accept=".mid,.midi,audio/midi" disabled></label>
     <span class="status" id="transport-status">Loading ...</span>
 </div>
 

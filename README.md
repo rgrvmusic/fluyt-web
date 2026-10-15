@@ -17,9 +17,12 @@ instead of a drumlogue.
 - Every part's engine and preset can be changed **while it plays**, without a click.
 - `Random` gives the bass, the lead and the chords three different engines, drawn at random -
   press it as often as you like, and a few presses have been over most of the nine.
+- Two tunes ship with it - a sea shanty and a synthpop loop - and each brings the engines it was
+  written for, so choosing one is a change you can hear and not only one you can read.
+- **Load MIDI** plays a `.mid` of your own on the engines that are already on screen.
 - A second page adds a keyboard and a MIDI input, for playing an engine rather than hearing the
   tune.
-- The tune is a **Standard MIDI File**, bundled and parsed in the page, so a file written here or
+- The tunes are **Standard MIDI Files**, bundled and parsed in the page, so a file written here or
   in a DAW reaches the engines the same way.
 
 
@@ -27,7 +30,7 @@ instead of a drumlogue.
 
 | | |
 | --- | --- |
-| `index.html` | The tune, the part selectors and the Random button. Small, self-contained, no permissions. This is the one that goes in the itch.io iframe. |
+| `index.html` | The tune, the picker, Load MIDI, the part selectors and the Random button. Small, self-contained, no permissions. This is the one that goes in the itch.io iframe. |
 | `keyboard.html` | The same, plus an on-screen keyboard, the computer keyboard (Z-row and Q-row, `←`/`→` to shift octave) and a WebMIDI input. |
 
 They are two pages rather than one because a cross-origin iframe - which is what the itch.io embed
@@ -55,15 +58,16 @@ whatever is right with the build.
 | --- | --- |
 | `make` | `dist/` - the nine modules, then the page over them. This is what gets deployed. |
 | `make wasm` | just `dist/wasm/`, for iterating on the C |
-| `make midi` | write the notation in `src/js/tune.js` out to `src/tune/fluyt-tune.mid`, after editing it |
-| `make check` | `smoke` + `pagecheck` + `swapcheck` + `midicheck` + `tunecheck` + `workletcheck`, below |
+| `make midi` | write the notation in `src/js/tunes/` out to `src/tune/`, after editing it |
+| `make check` | `smoke` + `pagecheck` + `swapcheck` + `midicheck` + `tunecheck` + `workletcheck` + `songcheck`, below |
 | `make serve` | `dist/` on `:8000` |
 | `make clean` | remove `dist/` and `build/` |
 
 Nothing built is committed: `dist/` and `build/` are gitignored, and the repository is source-only -
-with one deliberate exception. `src/tune/fluyt-tune.mid` is committed, because it is not a build
-product of the page: it is the file the page plays, the way a `.c` file is what a compiler reads. It
-is written from the notation by `make midi`, and `midicheck` fails if the two have drifted apart.
+with one deliberate exception. `src/tune/fluyt-shanty.mid` and `src/tune/fluyt-synthpop.mid` are
+committed, because they are not build products of the page: they are the files the page plays, the
+way a `.c` file is what a compiler reads. They are written from the notation by `make midi`, and
+`midicheck` fails if a tune and its file have drifted apart.
 
 
 #### The checks
@@ -73,17 +77,20 @@ is written from the notation by `make midi`, and `midicheck` fails if the two ha
 | `tools/smoke.mjs` | each of the nine modules loads through the worklet's own loader, names itself, and renders every preset it claims - so a module that loads and stays silent fails here |
 | `tools/pagecheck.mjs` | every module parses and its imports resolve, every file a page asks for is there - in the markup or built at runtime - and every id a script looks up is in the markup |
 | `tools/swapcheck.mjs` | the engine swap, from the main thread: that a swap does not start a page that is stopped, that one made while it plays joins the tune where it is, and that neither the incoming nor the outgoing node is ever heard at a gain that would make a click |
-| `tools/midicheck.mjs` | the tune: that `src/tune/fluyt-tune.mid` is still what the notation says, that it reads back through `src/js/smf.js` as those notes on those steps, and that the grid, the length and the awkward files are handled the way the comments claim |
-| `tools/tunecheck.mjs` | the whole tune, on every engine, on every part, offline: non-finite samples, silence, and the mix against full scale |
-| `tools/workletcheck.mjs` | the worklet itself, run outside a browser: where every note lands, whether the frame count is right, the loop point, mid-tune joins, and stop |
+| `tools/midicheck.mjs` | every tune: that each `src/tune/*.mid` is still what its notation says, that it reads back through `src/js/smf.js` as those notes on those steps, and that the grid, the length and the awkward files are handled the way the comments claim |
+| `tools/tunecheck.mjs` | every tune, on every engine, on every part, offline: non-finite samples, silence, and the mix against full scale |
+| `tools/workletcheck.mjs` | the worklet itself, run outside a browser: where every note lands, whether the frame count is right, the loop point, mid-tune joins, stop, and a pattern handed to a stopped part |
+| `tools/songcheck.mjs` | changing the tune, from the main thread: that only the parts whose engine differs are rebuilt, that the notes arrive before the transport that plays them, that a swap while playing restarts the loop at the top, and that a file which is not a MIDI file costs a message and nothing else |
 
-`midicheck` is what stands between the two halves of the tune. It builds the file from the notation
+`midicheck` is what stands between the two halves of a tune. It builds the file from the notation
 and compares the bytes, then reads the committed file back with the parser the page loads and
 compares every `on`/`off` entry against the notation - so a reader that loses a note, or moves one by
-a step, fails here rather than in a browser. The rest of it is the reader's own decisions: one
-fixture per grid on the ladder, a file that is on none of them, a format 0 file (everything on one
-track, told apart by channel), a note held past the end of the file, a note of no length, an off with
-no on, a file with no tempo, a file that changes tempo, and a file with more parts than the page has.
+a step, fails here rather than in a browser. It does that for every tune in `src/js/tunes/`, so a tune
+whose notation and file disagree is the only thing that has to be added with it. The rest of it is the
+reader's own decisions: one fixture per grid on the ladder, a file that is on none of them, a format 0
+file (everything on one track, told apart by channel), a note held past the end of the file, a note of
+no length, an off with no on, a file with no tempo, a file that changes tempo, and a file with more
+parts than the page has.
 
 `swapcheck` is the page half of the swap - `Part`, in `src/js/fluyt.js` - driven with three fake
 browser objects instead of a real one, because that class needs an `AudioContext` and a worklet to run
@@ -93,27 +100,47 @@ so a node swapped in while the page was stopped was given an epoch already in th
 playing. `Random` leaves the drums alone, which is why three parts of the four came back.
 
 `tunecheck` is what catches a preset that is not there without needing a browser, and it writes
-`build/tunecheck/fluyt-tune.wav` - the tune as the page opens, trimmed as the page trims it - so it
-can be listened to.
+`build/tunecheck/fluyt-shanty.wav` and `fluyt-synthpop.wav` - each tune as the page opens, trimmed as
+the page trims it - so they can be listened to. The engine × part matrix stays per tune, because what
+it is for is the worst case reachable by *any* assignment: summing one part's loudest moment across
+all nine engines is not the same number as rendering the engines a tune happens to name.
+
+`songcheck` is `swapcheck`'s counterpart for changing the tune - `Player.setSong`, the one place that
+happens, driven against four fake parts and a fake context. It is what says that a tune swapped in
+while the page is playing ends playing, on one epoch, at the new tune's step length, rather than on
+the old tune's phase; that the notes go over before the engines, so a new node is not handed the
+outgoing tune's pattern; and that a file which is not a MIDI file is refused before anything is
+stopped, so the tune that is playing keeps playing. `selectTune`'s own `fetch` cannot run under Node,
+so it is `pagecheck` that holds the url it fetches - the file says so rather than implying more.
 
 `workletcheck` stands in for an `AudioWorkletGlobalScope` and drives the real processor, which is
 the only way the sample-accurate scheduling gets checked by anything but an ear. It measures the
 frame each note starts on and asserts each one is at or after its step and less than a frame past
 it, that every quantum renders exactly 128 frames across however many blocks a step split it into,
 that the second pass begins exactly one period after the first - which is where a pattern indexed
-one step too long shows up as a skipped beat - and that a node joining a tune already playing lands
-on the tune's own step rather than starting its own bar one. The step length is 6428.568 frames, so
-this is where rounding it would fail.
+one step too long shows up as a skipped beat - that a node joining a tune already playing lands
+on the tune's own step rather than starting its own bar one, and that a pattern handed to a part with
+no transport is held rather than played. The step length is 6428.571 frames, so this is where rounding
+it would fail.
 
 
-#### The tune
+#### The tunes
 
-Eight bars in A minor at 112 BPM, four parts. **The page plays `src/tune/fluyt-tune.mid`**, a
-four-track Standard MIDI File, read when the page opens by `src/js/smf.js`; the notation in
-`src/js/tune.js` is where that file is written from, by `make midi`.
+Two of them, and each is eight bars of sixteen steps in four parts: **Sea shanty**, in A minor at 112
+BPM, and **Synthpop**, in D minor at 124 BPM. **The page plays `src/tune/fluyt-shanty.mid` and
+`src/tune/fluyt-synthpop.mid`**, four-track Standard MIDI Files read by `src/js/smf.js`; the notation
+in `src/js/tunes/` is where each file is written from, by `make midi`.
 
-Both are kept because each is good at something the other is not. The notation is a bar a line and
-can be read, edited and reviewed by hand:
+Choosing a tune also sets the engines it was written for - ANALOG, TRIO, PHASE and DRUM for the
+shanty, LOFI, PHASE, FM6 and DRUM for the synthpop - so the picker is a change you can hear and not
+only one you can read. **Load MIDI** is the other half of this: a file of your own is read the same
+way and plays on the engines that are already on screen, because a tune is notes and the four parts
+are the page's own fact (`src/js/parts.js`). A loaded file that had to be changed to fit - notes off
+the grid, events with nowhere to go, a tempo that changes part-way - says so on the line under the
+transport, next to its tempo and its length, rather than quietly playing something else.
+
+Both the notation and the file are kept because each is good at something the other is not. The
+notation is a bar a line and can be read, edited and reviewed by hand:
 
 ```
 bass:   "A1 . A1 . A1 . A1 . A1 . A1 . A1 . A1 ."
@@ -122,14 +149,30 @@ drums:  "36+42 . 42 . 38+42 . 42 . 36+42 . 42 ."
 ```
 
 A token is a note (`A1`, or a MIDI number like `36` for the drum part), several joined with `+`,
-`.` for a rest, or `-` to hold. It is an original tune: the shape is a sea shanty's, because the
-page it plays on is a Fluyt page and a Fluyt is a ship, but it is not a quotation of any shanty.
+`.` for a rest, or `-` to hold. Both tunes are original. The shanty's shape is a shanty's, because the
+page it plays on is a Fluyt page and a Fluyt is a ship, and it is not a quotation of any shanty; the
+synthpop one is a loop - four to the floor, a bass that takes the octave on the offbeat, and a
+syncopated hook over it.
 
 The file is what a DAW opens, what a visitor can replace, and what the page actually parses - so the
 path from music to engine is a real one, and not a private notation only this page understands.
-`compileTune()` still refuses to build if a part is not exactly eight bars of sixteen, which is the
-mistake the notation makes easiest - and the one that would otherwise arrive as a part that is
-quietly a step out of phase for the whole loop.
+`compileTune()` refuses to build if a part is not exactly that tune's bars of sixteen steps, or if the
+parts and the notation do not name the same four things - which is the mistake the notation makes
+easiest, and the one that would otherwise arrive as a part quietly a step out of phase for the whole
+loop, or quietly silent.
+
+**Adding a tune** is a module in `src/js/tunes/` and a line in its `index.js`: nothing in the page, the
+player or the tools knows how many tunes there are, and every one of them walks that list rather than
+naming a tune of its own. `make midi` writes the file from the notation and `midicheck` fails if the
+two have drifted apart.
+
+**A tune authored in a DAW instead** is a supported thing to do, and it needs nothing committed: the
+page's Load MIDI plays it. To have it offered by the picker as well, its notation has to exist too - a
+bundled tune *is* its notation and its file, and `midicheck` compares them - so a DAW file is
+transcribed into `src/js/tunes/<id>.js`, and `make midi` writes the file back out from there. Four
+tracks, matched to the four parts by track name (`Bass`, `Lead`, `Pad`, `Drums`, or a word like
+"strings" or "kit"), then by channel 10 for the drums, then in order; format 1 or format 0, one track
+per part or one track told apart by channel.
 
 **The grid is the file's, not the page's.** A step is a fixed number of frames, so a file's ticks
 have to land on steps - and a triplet figure snapped into straight sixteenths is a different rhythm,
@@ -145,12 +188,13 @@ follows from it - the notation's `BPM` is only what `make midi` writes. A file t
 part-way is played at its first tempo throughout, which is what one clock and a looping transport can
 honestly do; the change is counted in `tempoChanges` rather than ignored.
 
-**A tune authored in a DAW instead** is a supported thing to do: put the file at
-`src/tune/fluyt-tune.mid`, delete the notation and `tools/tune-to-mid.mjs`, and the page plays it.
-Four tracks, matched to the four parts by track name (`Bass`, `Lead`, `Pad`, `Drums`, or a word like
+**A tune authored in a DAW instead** is a supported thing to do, and it needs nothing committed: the
+page's Load MIDI plays it. To have it offered by the picker as well, its notation has to exist too - a
+bundled tune *is* its notation and its file, and `midicheck` compares them - so a DAW file is
+transcribed into `src/js/tunes/<id>.js`, and `make midi` writes the file back out from there. Four
+tracks, matched to the four parts by track name (`Bass`, `Lead`, `Pad`, `Drums`, or a word like
 "strings" or "kit"), then by channel 10 for the drums, then in order; format 1 or format 0, one track
-per part or one track told apart by channel. What is not supported is a file here and a notation
-there, each claiming to be the tune - which is why `midicheck` compares them.
+per part or one track told apart by channel.
 
 
 #### Presets, by name
@@ -159,7 +203,9 @@ Preset indices are not comparable across engines - ANALOG's 3 is not TRIO's 3 - 
 an engine gains a preset. So no part names an index. Each part names a **role** (`bass`, `lead`,
 `pad`, `drum`) and the preset is the first whose *name* matches it, read from the module at
 runtime. An engine with nothing bass-like in it plays its first sound, which is the right thing for
-a preview of that engine to do.
+a preview of that engine to do. The roles are the page's and not a tune's - they are in
+`src/js/parts.js`, with the four parts themselves - so a tune says what is played and never what
+plays it.
 
 
 #### Sample rate
@@ -186,8 +232,10 @@ sounds like, and a compressor on the master bus changes the attack and the punch
 they came to hear.
 
 The number is derived, not chosen - `tunecheck` sums the loudest peak each part reaches over all
-nine engines and asserts that even that worst case stays inside full scale - so a future preset
-that is louder than the ones measured fails the check rather than arriving as a clipped preview.
+nine engines and asserts that even that worst case stays inside full scale, per tune, and the worst
+tune is the one that decides it: 0.35 leaves the shanty at 0.878 of full scale and the synthpop at
+0.900 - so a future preset that is louder than the ones measured fails the check rather than arriving
+as a clipped preview.
 
 
 #### The worklet

@@ -110,7 +110,7 @@ export class Part {
      *
      * `choosePreset` is asked only after the module has answered, because that is the first moment
      * the preset names exist: a preset index means nothing across engines, and a name is the only
-     * thing that does. The caller supplies the policy (src/js/tune.js has it) so that nothing here
+     * thing that does. The caller supplies the policy (src/js/parts.js has it) so that nothing here
      * has an opinion about what a bass should sound like.
      */
     async setEngine(engine, { choosePreset = null } = {}) {

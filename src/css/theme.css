@@ -120,6 +120,31 @@ select {
 
 select:disabled { opacity: .55; }
 
+/* A file input is two controls the browser draws, and neither of them is a `button` or a `select`, so
+   none of the rules above reach it: it would arrive at the page's font size, in the page's colours,
+   with none of the rounding. Both halves are given the select's treatment instead, so choosing a file
+   reads as one more control in the row rather than as a browser widget that landed in it. */
+input[type="file"] {
+    font: inherit;
+    color: var(--muted);
+    max-width: 100%;
+}
+
+input[type="file"]::file-selector-button {
+    font: inherit;
+    color: var(--button-fg);
+    background: var(--button);
+    border: 0;
+    border-radius: var(--radius);
+    padding: 5px 12px;
+    margin-right: 6px;
+    cursor: pointer;
+}
+
+input[type="file"]::file-selector-button:hover { background: var(--header); }
+input[type="file"]:disabled { opacity: .55; }
+input[type="file"]:disabled::file-selector-button { opacity: .55; cursor: default; }
+
 /* One width for every selector, so the four rows read as a table and a short entry - "Drum kit" -
    is not a visibly smaller control than a long one. A minimum rather than a fixed width, so a name
    longer than this grows its own select instead of being clipped. */
@@ -227,6 +252,11 @@ kbd {
     body { padding: 10px; }
     .row .name { min-width: 3.6em; }
     select { max-width: 46vw; }
+    /* The tune controls are in the same row as the transport, and a chosen filename is the longest
+       thing on the page: without its own limit it would push the row wider than the phone and the
+       whole page would scroll sideways. The input clips, and the status line under it still names
+       what is playing. */
+    input[type="file"] { max-width: 46vw; }
 }
 
 .fineprint {
